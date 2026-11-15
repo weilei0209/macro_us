@@ -215,9 +215,38 @@ def topic_cpi_pce_inversion(series, derived, latest):
     }
 
 
+def topic_sahm(series, derived, latest):
+    """萨姆规则（Sahm Rule）：失业率 3MMA 高出过去 12 个月最低 3MMA ≥ 0.5pp 触发衰退预警。"""
+    sahm = derived.get("sahm_rule")
+    if not sahm:
+        return None
+    v = sahm["value"]
+    triggered = v >= 0.5
+    # 当前失业率用于补充语境
+    unrate = latest.get("unrate", {})
+    unrate_txt = f"当前失业率 {unrate['value']}%" if unrate.get("value") is not None else "失业率数据缺失"
+    return {
+        "id": "sahm_rule",
+        "title": "萨姆规则（衰退预警）",
+        "triggered": triggered,
+        "severity": "high" if triggered else "normal",
+        "data": {"sahm_value": v, "threshold": 0.5},
+        "analysis": (
+            f"萨姆规则当前 {v:+.2f}pp（阈值 0.50pp）。{unrate_txt}。"
+            + ("⚠️ Sahm Rule 已触发，提示经济可能已进入衰退早期。该规则历史上几乎每次衰退都触发、"
+               "且误报极少（2020 疫情曾飙至 +9pp，2008 金融危机 +3pp 以上）。"
+               if triggered else
+               "未触发，失业率 3 个月移动平均未显著偏离过去 12 个月低位，经济尚未显现衰退早期信号。")
+        ),
+        "framework": TOPIC_RULES["sahm_rule"]["framework"],
+        "watch": "后续关注：失业率 3MMA 与 12 个月低位的缺口是否持续扩大、首申失业金是否抬升",
+    }
+
+
 TOPIC_FUNCS = [
     topic_inflation_anchor, topic_labor_freeze, topic_beveridge, topic_qt_end,
     topic_technical_recession, topic_r_minus_g, topic_cpi_pce_inversion,
+    topic_sahm,
 ]
 
 

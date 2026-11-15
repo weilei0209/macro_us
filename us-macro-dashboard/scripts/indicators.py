@@ -262,6 +262,7 @@ DERIVED_INDICATORS = {
     "cpi_pce_gap":  {"deps": ["cpi_yoy", "pce_yoy"], "desc": "CPI-PCE 剪刀差（正常 +0.3~0.5，倒挂为异常）"},
     "r_minus_g":    {"deps": ["tips10y", "gdp_qoq"], "desc": "实际利率 r - 实际增速 g（增长化债空间）"},
     "output_gap":   {"deps": ["gdp_real", "gdp_pot"], "desc": "产出缺口 = (实际GDP/潜在GDP - 1) * 100"},
+    "sahm_rule":    {"deps": ["unrate"], "desc": "萨姆规则 = 失业率3MMA - 过去12个月最低3MMA（阈值0.5pp）"},
 }
 
 # ---------------------------------------------------------------------------
@@ -312,5 +313,12 @@ TOPIC_RULES = {
         "indicator": "cpi_pce_gap",
         "desc": "CPI 同比跌破 PCE 同比（罕见倒挂）",
         "framework": "正常 CPI≈PCE+0.3~0.5pp；2026 年以来罕见倒挂，源于住房降温 + AI 推升 PCE 分项。",
+    },
+    "sahm_rule": {
+        "name": "萨姆规则（衰退预警）",
+        "indicator": "sahm_rule",
+        "desc": "失业率 3MMA 高出过去 12 个月最低 3MMA ≥ 0.5pp 即触发",
+        "threshold": 0.5,   # 百分点
+        "framework": "Sahm Rule 由 Claudia Sahm 提出：当失业率的 3 个月移动平均，比过去 12 个月的最低 3 个月移动平均高出 0.50 个百分点时，经济正处于衰退的早期。它不预测衰退，而是实时确认衰退已经开始；历史上几乎每次衰退都触发，且误报极少。",
     },
 }

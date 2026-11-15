@@ -274,7 +274,8 @@ def build_chart(series_data, chart):
              "fwd5y5y": "5y5y", "on_rrp": "ON RRP", "bei10y": "BEI 10Y", "unrate": "失业率",
              "payrolls": "非农存量", "claims": "首申", "cpi": "CPI", "pcepi": "PCE",
              "ffr": "联邦基金", "sofr": "SOFR", "fed_assets": "美联储总资产",
-             "vix": "VIX", "hy_spread": "高收益利差", "gdp_real": "实际GDP"}
+             "vix": "VIX", "hy_spread": "高收益利差", "gdp_real": "实际GDP",
+             "sahm_rule": "萨姆规则"}
     multi_colors = {
         "tips10y": "#8b5cf6", "gdp_qoq": "#34d399",
         "us10y": "#e5484d", "us2y": "#3b82f6",
@@ -395,6 +396,10 @@ TOPIC_DETAIL_CHARTS = {
     ],
     "cpi_pce_inversion": [
         {"id": "td_yoy", "title": "CPI vs PCE 同比", "sub": "剪刀差为口径差异", "series": [], "color": "#e5484d"},
+    ],
+    "sahm_rule": [
+        {"id": "td_sahm", "title": "萨姆规则（Sahm Rule）", "sub": "失业率 3MMA 高出 12 个月最低 3MMA，≥0.5pp 触发衰退预警", "series": ["sahm_rule"], "color": "#e5484d"},
+        {"id": "td_sahm_unrate", "title": "失业率 U3", "sub": "萨姆规则的底层输入，家庭调查口径", "series": ["unrate"], "color": "#3b82f6"},
     ],
 }
 

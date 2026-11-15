@@ -89,6 +89,39 @@ def ma3(values):
     return sum(vals[-3:]) / 3
 
 
+def sahm_rule_series(unrate_series):
+    """从失业率 U3 序列计算 Sahm Rule（萨姆规则）完整历史序列。
+
+    Sahm Rule：失业率的 3 个月移动平均，比过去 12 个月里该 3 个月移动平均的
+    最低值高出 >= 0.50 个百分点时，标志经济进入衰退（实时版本）。
+    返回 [{date, value}]，value 为当前 3MMA 减 12 个月最低 3MMA（百分点）。
+    """
+    pts = [(p["date"], p["value"]) for p in unrate_series if p["value"] is not None]
+    pts.sort(key=lambda x: x[0])
+    if len(pts) < 15:  # 需要至少 12 个月历史才能算
+        return []
+    # 逐点计算 3 个月移动平均
+    dates = [d for d, _ in pts]
+    vals = [v for _, v in pts]
+    ma3_vals = [None] * len(vals)
+    for i in range(len(vals)):
+        if i >= 2:
+            ma3_vals[i] = sum(vals[i-2:i+1]) / 3
+    # 对每个点，取过去 12 个月（含当前）里 3MMA 的最低值
+    out = []
+    for i in range(len(pts)):
+        if ma3_vals[i] is None:
+            continue
+        # 过去 12 个月的窗口：从 i-11 到 i
+        window = [v for v in ma3_vals[max(0, i-11):i+1] if v is not None]
+        if not window:
+            continue
+        min_12m = min(window)
+        sahm = round(ma3_vals[i] - min_12m, 2)
+        out.append({"date": dates[i], "value": sahm})
+    return out
+
+
 # ---------------------------------------------------------------------------
 # 非农新增的修订序列重建（用 ALFRED 实时数据库）
 # 非农发布后 BLS 会回溯修正前两个月。本函数抓取每个发布日（vintage）的存量快照，
@@ -317,6 +350,20 @@ def main():
             derived["output_gap"] = {"value": round(gap, 2), "date": gr["date"],
                                      "note": f"实际GDP {gr['value']:.0f} / 潜在GDP {gp:.0f}"}
 
+    # Sahm Rule（萨姆规则）：失业率 3MMA 高出过去 12 个月最低 3MMA 的幅度
+    unrate_series = all_series.get("unrate", [])
+    if unrate_series:
+        sahm_series = sahm_rule_series(unrate_series)
+        if sahm_series:
+            latest_sahm = sahm_series[-1]
+            derived["sahm_rule"] = {
+                "value": latest_sahm["value"],
+                "date": latest_sahm["date"],
+                "note": f"失业率 3MMA 高出过去 12 个月最低 3MMA {latest_sahm['value']:.2f}pp（阈值 0.50pp）",
+            }
+            # 把 Sahm Rule 完整历史序列也存入 all_series，供图表展示
+            all_series["sahm_rule"] = sahm_series
+
     log(f"  派生指标 {len(derived)} 个: {list(derived.keys())}")
 
     # 5. 汇总最新值快照
@@ -327,6 +374,9 @@ def main():
     }
     latest = {}
     for ind, series in all_series.items():
+        if ind == "sahm_rule":
+            # Sahm Rule 是派生序列（供专题图表用），不作为原始指标卡展示
+            continue
         meta = FRED_META.get(ind)
         label, cat = meta if isinstance(meta, tuple) else (ind, "其他")
         lv = latest_value(series)
