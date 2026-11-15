@@ -179,9 +179,49 @@ def freq_rule_for_chart(chart):
     return ""
 
 
+def payrolls_revision_chart():
+    """非农新增 + 修订对比图表：实线=最新修订值，虚线=n-1/n-2 月调整前数据。
+    读取 data/payrolls_revisions.json（由 fetch_all 的 build_payrolls_revisions 生成）。"""
+    path = os.path.join(DATA_DIR, "payrolls_revisions.json")
+    if not os.path.exists(path):
+        # 回退：用 series.json 里 payrolls 的差分算新增（无修订虚线）
+        return {"dates": [], "release_rule": "统计月数据 · 次月首周周五发布",
+                "series": [], "_no_rev": True}
+    with open(path, encoding="utf-8") as f:
+        rev = json.load(f)
+    months = rev.get("months", [])
+    dates = [m + "-01" for m in months]  # 转回 YYYY-MM-01 供前端 category 轴
+    latest = rev.get("latest_mom", [])
+    initial = rev.get("initial_mom", [])
+    rev1 = rev.get("rev1_mom", [])
+    # 实线：最新修订值（主序列）
+    series = [{"name": "非农新增（最新）", "values": latest, "color": "#e5484d"}]
+    # 虚线：初值（调整前）。仅对最近 3 个月显示点，其余为 null，避免虚线铺满历史
+    # 需求：n-1 和 n-2 月用虚线展现"调整前数据"，即最近两个已发布月 + 当月
+    def sparse(vals, keep_last=3):
+        out = [None] * len(vals)
+        n = len(vals)
+        for i in range(n):
+            if i >= n - keep_last and vals[i] is not None:
+                out[i] = vals[i]
+        return out
+    series.append({"name": "首次发布值（调整前）", "values": sparse(initial, 3),
+                   "color": "#f5a623", "dashed": True, "showSymbol": True})
+    series.append({"name": "1 次修正后", "values": sparse(rev1, 2),
+                   "color": "#3b82f6", "dashed": True, "showSymbol": True})
+    return {
+        "dates": dates,
+        "release_rule": "统计月数据 · 次月首周周五发布（虚线为历史发布时的初值/一次修正值）",
+        "series": series,
+    }
+
+
 def build_chart(series_data, chart):
     cid = chart["id"]
     rule = freq_rule_for_chart(chart)
+    # 非农新增 + 修订对比（实线最新值 + 虚线初值/1次修正）
+    if cid == "emp_payrolls":
+        return payrolls_revision_chart()
     if cid in ("chart_vu", "emp_vu", "td_vu"):
         d = vu_series(series_data)
         return {"dates": d["dates"], "release_rule": rule, "series": [{"name": "V/U 比率", "values": d["values"], "color": "#e5484d"}]}
@@ -224,7 +264,7 @@ HOME_CHARTS = [
 
 THEME_CHARTS = {
     "employment": [
-        {"id": "emp_payrolls", "title": "非农就业总人数", "sub": "CES 企业调查，存量看趋势", "series": ["payrolls"], "color": "#e5484d"},
+        {"id": "emp_payrolls", "title": "非农新增（含历史修订）", "sub": "实线=最新修订值；虚线=首次发布值与 1 次修正值（非农发布后回溯修正前 2 个月）", "series": ["payrolls"], "color": "#e5484d"},
         {"id": "emp_vu", "title": "V/U 比率", "sub": "岗位空缺 / 失业人数", "series": [], "color": "#e5484d"},
         {"id": "emp_unrate", "title": "失业率 U3", "sub": "家庭调查（CPS）口径", "series": ["unrate"], "color": "#f5a623"},
         {"id": "emp_claims", "title": "首申失业金", "sub": "唯一周度就业指标，领先失业率", "series": ["claims"], "color": "#3b82f6"},

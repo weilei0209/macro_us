@@ -90,6 +90,87 @@ def ma3(values):
 
 
 # ---------------------------------------------------------------------------
+# 非农新增的修订序列重建（用 ALFRED 实时数据库）
+# 非农发布后 BLS 会回溯修正前两个月。本函数抓取每个发布日（vintage）的存量快照，
+# 重建每月"非农新增"的 初值 → 1次修正 → 2次修正（最终） 轨迹。
+# ---------------------------------------------------------------------------
+def build_payrolls_revisions(fred, years_back=3):
+    """返回 {months, latest_mom, initial_mom, rev1_mom, rev2_mom}，均按时间升序。
+    latest_mom   = 最新修订后的非农新增（实线，主序列）
+    initial_mom  = 首次发布时的非农新增（虚线，调整前）
+    rev1_mom     = 第一次修正后的非农新增（虚线）
+    rev2_mom     = 第二次修正后的非农新增（虚线，最终）
+    """
+    start_year = THIS_YEAR - years_back
+    rt_start = f"{start_year}-01-01"
+    # 1. 所有 vintage 日期（每个非农发布日一个）
+    try:
+        vintages = fred.series_vintagedates("PAYEMS", realtime_start=rt_start,
+                                            realtime_end=TODAY.isoformat())
+    except Exception as e:
+        log(f"  非农修订：获取 vintage 日期失败({e})")
+        return None
+    if not vintages:
+        return None
+
+    # 2. 每个 vintage 抓一份存量快照（取最近 months_per_vintage 个月，足够算差分）
+    # 为对齐首尾月份，抓 observation_start 提前一个月
+    obs_start = f"{start_year - 1}-01-01"
+    snapshots = {}  # vintage_date -> {month: level}
+    for v in vintages:
+        try:
+            obs = fred.series_observations_vintage(
+                "PAYEMS", realtime_start=v, realtime_end=v,
+                observation_start=obs_start, observation_end=TODAY.isoformat())
+            snap = {o["date"]: o["value"] for o in obs if o["value"] is not None}
+            if snap:
+                snapshots[v] = snap
+        except Exception as e:
+            log(f"  非农修订：vintage {v} 抓取失败({e})")
+    if not snapshots:
+        return None
+
+    # 3. 重建每个月的修订轨迹
+    # 按月收集所有月的集合（用最新的 vintage 快照确定完整月份列表）
+    latest_v = max(snapshots.keys())
+    months = sorted(k for k in snapshots[latest_v].keys() if k.endswith("-01"))
+    # 每月非农新增（差分）在不同 vintage 下的值
+    # month -> {vintage: mom}
+    mom_by_month = {}
+    for v in sorted(snapshots.keys()):
+        snap = snapshots[v]
+        ms = sorted(k for k in snap.keys() if k.endswith("-01"))
+        for i in range(1, len(ms)):
+            cur, prev = ms[i], ms[i - 1]
+            if snap[cur] is not None and snap[prev] is not None:
+                mom = snap[cur] - snap[prev]
+                mom_by_month.setdefault(cur, {})[v] = mom
+
+    # 4. 组装输出序列
+    out_months = [m for m in months if m in mom_by_month]
+    latest_mom, initial_mom, rev1_mom, rev2_mom = [], [], [], []
+    for m in out_months:
+        vmap = mom_by_month[m]
+        vs = sorted(vmap.keys())
+        # 最新值 = 最新 vintage 下的差分
+        latest_mom.append(round(vmap[vs[-1]], 1))
+        # 初值 = 首次出现该月的 vintage（第一个能算出差分的 vintage）
+        initial_mom.append(round(vmap[vs[0]], 1))
+        # 1次修正 = 第二个 vintage（若存在）
+        rev1_mom.append(round(vmap[vs[1]], 1) if len(vs) >= 2 else None)
+        # 2次修正 = 第三个 vintage（若存在）
+        rev2_mom.append(round(vmap[vs[2]], 1) if len(vs) >= 3 else None)
+
+    return {
+        "months": [m[:7] for m in out_months],
+        "latest_mom": latest_mom,
+        "initial_mom": initial_mom,
+        "rev1_mom": rev1_mom,
+        "rev2_mom": rev2_mom,
+    }
+
+
+# ---------------------------------------------------------------------------
 # 主流程
 # ---------------------------------------------------------------------------
 def main():
@@ -274,6 +355,21 @@ def main():
                   f, ensure_ascii=False, indent=2)
 
     log(f"完成。series.json 与 latest.json 已更新，最新值 {len(latest)} 个指标")
+
+    # 7. 非农新增修订序列（ALFRED 实时数据库，单独文件）
+    log("抓取非农新增的历史修订序列（ALFRED）...")
+    try:
+        rev = build_payrolls_revisions(fred)
+        if rev:
+            rev_path = os.path.join(DATA_DIR, "payrolls_revisions.json")
+            with open(rev_path, "w", encoding="utf-8") as f:
+                json.dump(rev, f, ensure_ascii=False)
+            n = len(rev["months"])
+            log(f"  非农修订序列 {n} 个月，最新 {rev['months'][-1] if n else 'N/A'}")
+        else:
+            log("  非农修订序列重建失败（无数据）")
+    except Exception as e:
+        log(f"  非农修订序列抓取异常：{e}")
 
 
 if __name__ == "__main__":

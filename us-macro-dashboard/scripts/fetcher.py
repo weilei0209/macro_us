@@ -85,6 +85,43 @@ class FredClient:
         s = d.get("seriess", [{}])
         return s[0] if s else {}
 
+    # ---- ALFRED（实时/历史修订数据库）----
+    # 通过 realtime_start/realtime_end 指定"vintage"（数据在某个时点看到的版本），
+    # 用于抓取指标的历史修订快照（如非农每月发布时的初值）。
+    def series_vintagedates(self, series_id, realtime_start=None, realtime_end=None):
+        """列出某序列在指定时间范围内的所有 vintage 日期（发布/修订日期）。"""
+        params = {"series_id": series_id}
+        if realtime_start:
+            params["realtime_start"] = realtime_start
+        if realtime_end:
+            params["realtime_end"] = realtime_end
+        d = self._get("series/vintagedates", params)
+        return d.get("vintage_dates", [])
+
+    def series_observations_vintage(self, series_id, realtime_start=None, realtime_end=None,
+                                    observation_start=None, observation_end=None):
+        """按 vintage 抓取序列观测值（正序 [{date, value}]）。
+        realtime_start/end 相同 = 该时点看到的版本（单次快照）。"""
+        params = {"series_id": series_id, "sort_order": "asc"}
+        if realtime_start:
+            params["realtime_start"] = realtime_start
+        if realtime_end:
+            params["realtime_end"] = realtime_end
+        if observation_start:
+            params["observation_start"] = observation_start
+        if observation_end:
+            params["observation_end"] = observation_end
+        d = self._get("series/observations", params)
+        out = []
+        for o in d.get("observations", []):
+            v = o.get("value")
+            try:
+                v = float(v) if v not in (".", "", None) else None
+            except ValueError:
+                v = None
+            out.append({"date": o.get("date"), "value": v})
+        return out
+
 
 # ---------------------------------------------------------------------------
 # 二、BLS 客户端（v2 API）

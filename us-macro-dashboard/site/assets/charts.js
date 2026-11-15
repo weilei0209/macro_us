@@ -71,10 +71,14 @@
   // zoomStartIndex: 默认缩放起始的数据点索引（如 2022 年对应的索引），未提供则显示全部
   function buildLineOption(data, big, zoomStartIndex){
     var series = data.series.map(function(s, i){
+      var dashed = !!s.dashed;
       return {
         name: s.name, type:'line', data: s.values,
-        smooth:true, showSymbol:false,
-        lineStyle:{width: big?2.5:2, color:s.color},
+        smooth: dashed ? false : true,
+        showSymbol: s.showSymbol === true,
+        symbol: s.showSymbol === true ? 'circle' : 'none',
+        symbolSize: big ? 7 : 5,
+        lineStyle:{width: big?2.5:2, color:s.color, type: dashed ? 'dashed' : 'solid'},
         itemStyle:{color:s.color},
         areaStyle: (i===0 && data.series.length===1) ? {color:s.color, opacity:0.15} : null,
         emphasis:{focus:'series'}
