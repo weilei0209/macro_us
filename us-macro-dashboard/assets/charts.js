@@ -40,22 +40,27 @@
   var chartInstances = [];
 
   // 把日期戳（如 2018-03-01）显示为"统计月份/季度"，避免误读为"发布日期"
-  function formatPeriod(axisValue){
+  // isQuarterly：是否为季频指标（只有季频才把 -10-01 等显示为 Q4，否则 10 月就是 10 月）
+  function formatPeriod(axisValue, isQuarterly){
     if(!axisValue) return axisValue;
     var s = String(axisValue);
     var m = s.match(/^(\d{4})-(\d{2})-\d{2}$/);
     if(!m) return s;
     var y = m[1], mo = m[2];
-    if(mo === '01' && s.endsWith('-01-01')) return y + ' Q1';
-    if(mo === '04' && s.endsWith('-04-01')) return y + ' Q2';
-    if(mo === '07' && s.endsWith('-07-01')) return y + ' Q3';
-    if(mo === '10' && s.endsWith('-10-01')) return y + ' Q4';
+    if(isQuarterly){
+      if(s.endsWith('-01-01')) return y + ' Q1';
+      if(s.endsWith('-04-01')) return y + ' Q2';
+      if(s.endsWith('-07-01')) return y + ' Q3';
+      if(s.endsWith('-10-01')) return y + ' Q4';
+      return y;
+    }
     return y + '年' + parseInt(mo,10) + '月';
   }
 
   function tooltipFormatter(params, releaseRule){
     if(!params || !params.length) return '';
-    var period = formatPeriod(params[0].axisValue);
+    var isQuarterly = releaseRule && releaseRule.indexOf('统计季度') !== -1;
+    var period = formatPeriod(params[0].axisValue, isQuarterly);
     var s = '<div style="font-weight:600;margin-bottom:2px;">统计期：' + period + '</div>';
     params.forEach(function(p){
       var v = (p.value==null||p.value==='')?'—':Number(p.value).toFixed(2);
