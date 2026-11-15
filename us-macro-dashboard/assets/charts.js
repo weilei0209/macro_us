@@ -72,6 +72,33 @@
     return s;
   }
 
+  // 构建 Y 轴配置：双轴（dual_axis）时左轴=series[yAxisIndex 0]，右轴=series[yAxisIndex 1]
+  function buildYAxis(data, big){
+    var dual = data.dual_axis === true;
+    var base = {
+      type:'value',
+      axisLine:{show:false}, axisTick:{show:false},
+      axisLabel:{color:THEME.text3, fontSize: big?11:10}
+    };
+    if(!dual){
+      base.splitLine = {lineStyle:{color:THEME.splitline}};
+      return base;
+    }
+    var left = Object.assign({}, base);
+    left.name = (data.series[0] && data.series[0].name) || '';
+    left.nameTextStyle = {color:THEME.text3, fontSize:big?11:10};
+    left.position = 'left';
+    left.splitLine = {lineStyle:{color:THEME.splitline}};
+    left.axisLabel = {color:THEME.text3, fontSize: big?11:10};
+    var right = Object.assign({}, base);
+    right.name = (data.series[1] && data.series[1].name) || '';
+    right.nameTextStyle = {color:THEME.text3, fontSize:big?11:10};
+    right.position = 'right';
+    right.splitLine = {show:false};
+    right.axisLabel = {color:THEME.text3, fontSize: big?11:10};
+    return [left, right];
+  }
+
   // 构建折线图 option（支持 dataZoom 拖动缩放；big 模式显示 slider 且字号更大）
   // zoomStartIndex: 默认缩放起始的数据点索引（如 2022 年对应的索引），未提供则显示全部
   function buildLineOption(data, big, zoomStartIndex){
@@ -86,7 +113,8 @@
         lineStyle:{width: big?2.5:2, color:s.color, type: dashed ? 'dashed' : 'solid'},
         itemStyle:{color:s.color},
         areaStyle: (i===0 && data.series.length===1) ? {color:s.color, opacity:0.15} : null,
-        emphasis:{focus:'series'}
+        emphasis:{focus:'series'},
+        yAxisIndex: s.yAxisIndex === 1 ? 1 : 0
       };
     });
     var fs = big ? 13 : 11;   // 字号
@@ -99,7 +127,7 @@
     }
     var option = {
       backgroundColor:THEME.bg,
-      grid:{left: big?64:48, right:20, top:28, bottom: big?64:44},
+      grid:{left: big?64:48, right: data.dual_axis ? (big?72:56) : 20, top:28, bottom: big?64:44},
       tooltip:{trigger:'axis',
         backgroundColor:THEME.card, borderColor:THEME.line,
         textStyle:{color:THEME.text, fontSize:12},
@@ -111,11 +139,7 @@
         axisLabel:{color:THEME.text3, fontSize: big?11:10},
         axisTick:{show:false}
       },
-      yAxis:{type:'value',
-        axisLine:{show:false}, axisTick:{show:false},
-        splitLine:{lineStyle:{color:THEME.splitline}},
-        axisLabel:{color:THEME.text3, fontSize: big?11:10}
-      },
+      yAxis: buildYAxis(data, big),
       // 拖拽/滚轮缩放：周期较长时自由拖动范围
       dataZoom:[
         Object.assign({ type:'inside', xAxisIndex:0, filterMode:'none', zoomOnMouseWheel:true, moveOnMouseMove:true }, zoomCfg),
@@ -132,6 +156,7 @@
   }
 
   // 根据 dataZoom 当前可见区间，动态重设 Y 轴范围（随 X 轴缩放自动适配）
+  // 双轴（dual_axis）时，左轴拟合 yAxisIndex=0 的序列，右轴拟合 yAxisIndex=1 的序列，各自独立缩放
   function fitYAxis(chart, data){
     if(!chart || !data) return;
     var opt = chart.getOption();
@@ -146,23 +171,37 @@
     if(i1 > n) i1 = n;
     if(i0 < 0) i0 = 0;
     if(i1 <= i0) i1 = i0 + 1;
-    var lo = Infinity, hi = -Infinity;
-    data.series.forEach(function(s){
-      for(var i=i0;i<i1;i++){
-        var v = s.values[i];
-        if(v==null || v==='' || isNaN(v)) continue;
-        if(v < lo) lo = v;
-        if(v > hi) hi = v;
-      }
-    });
-    if(lo === Infinity || hi === -Infinity) return;
-    var pad = (hi - lo) * 0.08;
-    if(pad === 0) pad = Math.abs(hi) * 0.05 || 1;
-    // 四舍五入到 4 位小数，避免浮点边界触发 ECharts 异常刻度
-    var ymin = Math.round((lo - pad) * 10000) / 10000;
-    var ymax = Math.round((hi + pad) * 10000) / 10000;
-    if(!(ymax > ymin)){ ymax = ymin + 1; }
-    chart.setOption({ yAxis:{ min: ymin, max: ymax } });
+
+    function rangeFor(axisIndex){
+      var lo = Infinity, hi = -Infinity;
+      data.series.forEach(function(s){
+        if((s.yAxisIndex === 1 ? 1 : 0) !== axisIndex) return;
+        for(var i=i0;i<i1;i++){
+          var v = s.values[i];
+          if(v==null || v==='' || isNaN(v)) continue;
+          if(v < lo) lo = v;
+          if(v > hi) hi = v;
+        }
+      });
+      if(lo === Infinity || hi === -Infinity) return null;
+      var pad = (hi - lo) * 0.08;
+      if(pad === 0) pad = Math.abs(hi) * 0.05 || 1;
+      var ymin = Math.round((lo - pad) * 10000) / 10000;
+      var ymax = Math.round((hi + pad) * 10000) / 10000;
+      if(!(ymax > ymin)){ ymax = ymin + 1; }
+      return { min: ymin, max: ymax };
+    }
+
+    if(data.dual_axis){
+      var left = rangeFor(0), right = rangeFor(1);
+      var update = {};
+      if(left){ update['yAxis.0.min'] = left.min; update['yAxis.0.max'] = left.max; }
+      if(right){ update['yAxis.1.min'] = right.min; update['yAxis.1.max'] = right.max; }
+      if(Object.keys(update).length) chart.setOption(update);
+      return;
+    }
+    var r = rangeFor(0);
+    if(r) chart.setOption({ yAxis:{ min: r.min, max: r.max } });
   }
 
   // 把日期字符串（如 '2022-01-01'）转成 dates 数组中第一个 >= 该日期的索引

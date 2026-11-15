@@ -312,10 +312,43 @@ def payrolls_revision_chart(series_data):
     }
 
 
+def mom_diff(series, start="1999-01-01"):
+    """把存量序列转为月度环比新增（差分），返回 {"dates": [...], "values": [...]}。
+    与 payrolls_revision_chart 里非农新增的差分口径一致：当月值 - 上月值。"""
+    pts = [p for p in series if p["value"] is not None and p["date"] >= start]
+    pts.sort(key=lambda x: x["date"])
+    dates, vals = [], []
+    for i in range(1, len(pts)):
+        d = pts[i]["date"]
+        if d >= CHART_HISTORY_START:
+            dates.append(d)
+            vals.append(round(pts[i]["value"] - pts[i-1]["value"], 1))
+    return {"dates": dates, "values": vals}
+
+
 def align_series(dates, series):
     """把序列值按给定 dates 对齐（缺值填 null），供多序列不同频率图表使用。"""
     m = {p["date"]: p["value"] for p in series if p["value"] is not None}
     return [m.get(d) for d in dates]
+
+
+def goods_vs_payrolls_chart(series_data):
+    """工业新增就业 vs 非农新增就业：双 Y 轴（左=非农新增，右=工业新增）。
+    两个轴各自独立缩放，使均值视觉接近，突出周期波动的同步/领先关系。"""
+    payrolls = mom_diff(series_data.get("payrolls", []))
+    goods = mom_diff(series_data.get("goods_emp", []))
+    # 以非农新增的日期为基准对齐工业新增（两者均月频，日期应一致）
+    dates = payrolls["dates"]
+    goods_aligned = align_series(dates, [{"date": d, "value": v} for d, v in zip(goods["dates"], goods["values"])])
+    return {
+        "dates": dates,
+        "release_rule": "统计月数据 · 次月首周周五发布（左轴=非农新增，右轴=工业新增，双轴各自缩放）",
+        "dual_axis": True,
+        "series": [
+            {"name": "非农新增（左轴）", "values": payrolls["values"], "color": "#e5484d", "yAxisIndex": 0},
+            {"name": "工业新增（右轴）", "values": goods_aligned, "color": "#3b82f6", "yAxisIndex": 1},
+        ],
+    }
 
 
 def build_chart(series_data, chart):
@@ -340,18 +373,9 @@ def build_chart(series_data, chart):
         return {"dates": d["dates"], "release_rule": "统计月数据 · 次月首周周五发布",
                 "series": [{"name": "就业扩散指数", "values": d["values"], "color": "#f5a623"}]}
     if cid == "emp_cyclical":
-        # 周期敏感行业：工业部门（制造+建筑+采矿）vs 临时工服务
-        goods = series_data.get("goods_emp", [])
-        temp = series_data.get("temphelps", [])
-        dg = series_points(goods)
-        dt = series_points(temp)
-        # 以工业部门日期为基准对齐临时工
-        dates = dg["dates"]
-        temp_aligned = align_series(dates, temp)
-        return {"dates": dates, "release_rule": "统计月数据 · 次月首周周五发布", "series": [
-            {"name": "工业部门（制造+建筑+采矿）", "values": dg["values"], "color": "#e5484d"},
-            {"name": "临时工服务", "values": temp_aligned, "color": "#3b82f6"},
-        ]}
+        # 工业新增就业 vs 非农新增就业：双 Y 轴（左=非农新增，右=工业新增），
+        # 各自独立量程缩放，使两个指标的均值视觉接近，便于比较周期性。
+        return goods_vs_payrolls_chart(series_data)
     if cid == "emp_hours":
         # 周工时：制造业 vs 私营部门（领先指标）
         man = series_data.get("awhman", [])
@@ -487,7 +511,7 @@ EMPLOYMENT_SECTIONS = [
         "charts": [
             {"id": "emp_payrolls", "title": "非农新增（含历史修订）", "sub": "实线=最新修订值；虚线=首次发布值与 1 次修正值（非农发布后回溯修正前 2 个月）", "series": ["payrolls"], "color": "#e5484d"},
             {"id": "emp_diffusion", "title": "就业扩散指数", "sub": "11 个主要行业环比上升占比，参考 PMI 构造（3MMA），衡量就业改善的广度", "series": ["emp_diffusion"], "color": "#f5a623"},
-            {"id": "emp_cyclical", "title": "周期敏感行业就业", "sub": "工业部门（制造+建筑+采矿）vs 临时工服务，周期拐点的领先信号", "series": ["goods_emp", "temphelps"], "color": "#e5484d"},
+            {"id": "emp_cyclical", "title": "工业新增就业 vs 非农新增", "sub": "工业部门（制造+建筑+采矿）新增就业 vs 总非农新增，双轴对比周期性", "series": ["goods_emp", "payrolls"], "color": "#e5484d"},
             {"id": "emp_hours", "title": "周工时（领先指标）", "sub": "制造业 vs 私营部门平均周工时，领先失业率与衰退", "series": ["awhman", "awhaetp"], "color": "#e5484d"},
         ],
     },
@@ -688,7 +712,7 @@ def chart_meta(chart):
         "td_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
         # 就业页新增
         "emp_diffusion": "来源 BLS · 单位 % · 11 个主要行业环比上升占比（参考 PMI 扩散指数构造，3MMA）",
-        "emp_cyclical": "来源 BLS · 单位 千人 · 工业部门=制造+建筑+采矿，周期敏感行业领先指标",
+        "emp_cyclical": "来源 BLS · 单位 千人（月度新增） · 工业新增=制造+建筑+采矿环比增量，双轴对比非农新增的周期性",
         "emp_hours": "来源 BLS · 单位 小时 · 周工时领先失业率与衰退（制造 vs 私营）",
         "emp_prime": "来源 BLS（CPS） · 单位 % · 黄金年龄 25-54 岁劳动参与率，剔年龄结构噪音",
         "emp_wages": "来源 BLS · 单位 % · AHE（构成偏差）vs ECI（固定权重、美联储首选），同比对比",
