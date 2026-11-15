@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(BASE_DIR, "scripts"))
 
 from indicators import (FRED_SERIES, FRED_META, BLS_SERIES, RELEASE_CALENDAR,
                         DERIVED_INDICATORS, TOPIC_RULES, INDICATOR_META,
-                        SCALED_INDICATORS)
+                        SCALED_INDICATORS, DIFFUSION_INDUSTRIES)
 from fetcher import (FredClient, BlsClient, BeaClient, CensusClient,
                      load_cache, save_cache, which_indicators_due,
                      cache_path)
@@ -101,6 +101,80 @@ def apply_scale(ind, series):
     for p in series:
         v = p["value"]
         out.append({"date": p["date"], "value": (v * scale) if v is not None else None})
+    return out
+
+
+def diffusion_series(all_series, industries=None, smooth=3):
+    """就业扩散指数：环比上升的行业占比（%，参考 ISM PMI 的扩散指数构造法）。
+
+    对每个行业取月环比差分，上升（>0）计 1，统计当月上升行业数占行业总数的百分比。
+    返回 [{date, value}]（value 为 0~100 的百分比），并可选 smooth 月移动平均平滑。
+    """
+    industries = industries or DIFFUSION_INDUSTRIES
+    # 各行业 -> {date: value}
+    maps = []
+    for ind in industries:
+        s = all_series.get(ind, [])
+        m = {p["date"]: p["value"] for p in s if p["value"] is not None}
+        if m:
+            maps.append(m)
+    if len(maps) < 4:
+        return []
+    # 全部日期并集（按月）
+    all_dates = set()
+    for m in maps:
+        all_dates.update(m.keys())
+    dates = sorted(d for d in all_dates if d.endswith("-01"))
+    out = []
+    for i, d in enumerate(dates):
+        if i == 0:
+            continue
+        prev = dates[i - 1]
+        up = 0
+        valid = 0
+        for m in maps:
+            cur, pv = m.get(d), m.get(prev)
+            if cur is not None and pv is not None and pv != 0:
+                valid += 1
+                if cur > pv:
+                    up += 1
+        if valid == 0:
+            continue
+        out.append({"date": d, "value": round(up / valid * 100, 1)})
+    # 平滑（3 个月移动平均）
+    if smooth and smooth > 1 and len(out) >= smooth:
+        sm = []
+        for i in range(len(out)):
+            window = out[max(0, i - smooth + 1):i + 1]
+            sm.append({"date": out[i]["date"],
+                       "value": round(sum(x["value"] for x in window) / len(window), 1)})
+        out = sm
+    return out
+
+
+def sum_series(all_series, inds):
+    """多个指标按日期对齐求和（用于工业部门就业 = 制造 + 建筑 + 采矿）。"""
+    maps = []
+    for ind in inds:
+        s = all_series.get(ind, [])
+        m = {p["date"]: p["value"] for p in s if p["value"] is not None}
+        if m:
+            maps.append(m)
+    if not maps:
+        return []
+    dates = sorted(set().union(*[set(m.keys()) for m in maps]))
+    out = []
+    for d in dates:
+        total = 0
+        ok = True
+        for m in maps:
+            v = m.get(d)
+            if v is None:
+                ok = False
+                break
+            total += v
+        if ok:
+            out.append({"date": d, "value": total})
     return out
 
 
@@ -380,6 +454,17 @@ def main():
             # 把 Sahm Rule 完整历史序列也存入 all_series，供图表展示
             all_series["sahm_rule"] = sahm_series
 
+    # 就业扩散指数（环比上升行业占比，参考 PMI 构造）
+    diff = diffusion_series(all_series)
+    if diff:
+        all_series["emp_diffusion"] = diff
+        derived["emp_diffusion"] = {"value": diff[-1]["value"], "date": diff[-1]["date"],
+                                    "note": f"{len(DIFFUSION_INDUSTRIES)} 个主要行业中环比上升的占比（3MMA）"}
+    # 工业部门就业 = 制造业 + 建筑业 + 采矿业（周期敏感行业之一）
+    goods_emp = sum_series(all_series, ["manemp", "uscons", "usmine"])
+    if goods_emp:
+        all_series["goods_emp"] = goods_emp
+
     log(f"  派生指标 {len(derived)} 个: {list(derived.keys())}")
 
     # 5. 汇总最新值快照
@@ -389,9 +474,10 @@ def main():
         "pcepi": "pce_yoy", "pce_core": "core_pce_yoy", "cpi_median": None,
     }
     latest = {}
+    # 派生序列（仅供图表/专题使用，不作为独立指标卡展示）
+    DERIVED_SERIES_SKIP = {"sahm_rule", "emp_diffusion", "goods_emp"}
     for ind, series in all_series.items():
-        if ind == "sahm_rule":
-            # Sahm Rule 是派生序列（供专题图表用），不作为原始指标卡展示
+        if ind in DERIVED_SERIES_SKIP:
             continue
         meta = FRED_META.get(ind)
         label, cat = meta if isinstance(meta, tuple) else (ind, "其他")

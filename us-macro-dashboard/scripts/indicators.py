@@ -40,6 +40,24 @@ FRED_SERIES = {
     "emratio":      "EMRATIO",     # 就业人口比
     "jolts_open":   "JTSJOL",      # JOLTS 岗位空缺
     "claims":       "ICSA",        # 首申失业金（周）
+    # ---- 就业：行业细分（CES，用于扩散指数 / 周期敏感行业）----
+    "manemp":       "MANEMP",      # 制造业就业
+    "uscons":       "USCONS",      # 建筑业就业
+    "usmine":       "USMINE",      # 采矿业就业
+    "temphelps":    "TEMPHELPS",   # 临时工服务就业
+    "uspbs":        "USPBS",       # 专业与商业服务
+    "usehs":        "USEHS",       # 私人教育与医疗
+    "ustrade":      "USTRADE",     # 零售贸易
+    "uswtrade":     "USWTRADE",    # 批发贸易
+    "usfire":       "USFIRE",      # 金融活动
+    "usinfo":       "USINFO",      # 信息业
+    "uslah":        "USLAH",       # 休闲与酒店
+    "usgovt":       "USGOVT",      # 政府
+    # ---- 就业：周工时（领先指标）----
+    "awhman":       "AWHMAN",      # 制造业周工时（生产与非管理岗）
+    "awhaetp":      "AWHAETP",     # 私营部门总周工时
+    # ---- 就业：黄金年龄劳动参与率（CPS 25-54）----
+    "prime_participation": "LNU01300060",  # 黄金年龄劳动参与率
     # ---- 通胀（月频）----
     "cpi":          "CPIAUCSL",    # CPI 总
     "cpi_core":     "CPILFESL",    # 核心 CPI
@@ -90,6 +108,21 @@ FRED_META = {
     "emratio":    ("就业人口比", "就业"),
     "jolts_open": ("JOLTS 岗位空缺", "就业"),
     "claims":     ("首申失业金", "就业"),
+    "manemp":     ("制造业就业", "就业"),
+    "uscons":     ("建筑业就业", "就业"),
+    "usmine":     ("采矿业就业", "就业"),
+    "temphelps":  ("临时工服务就业", "就业"),
+    "uspbs":      ("专业与商业服务", "就业"),
+    "usehs":      ("教育与医疗服务", "就业"),
+    "ustrade":    ("零售贸易", "就业"),
+    "uswtrade":   ("批发贸易", "就业"),
+    "usfire":     ("金融活动", "就业"),
+    "usinfo":     ("信息业", "就业"),
+    "uslah":      ("休闲与酒店", "就业"),
+    "usgovt":     ("政府就业", "就业"),
+    "awhman":     ("制造业周工时", "就业"),
+    "awhaetp":    ("私营部门周工时", "就业"),
+    "prime_participation": ("黄金年龄劳动参与率", "就业"),
     "cpi":        ("CPI 同比", "通胀"),
     "cpi_core":   ("核心 CPI 同比", "通胀"),
     "cpi_median": ("中位 CPI 同比", "通胀"),
@@ -188,6 +221,22 @@ RELEASE_CALENDAR = {
     "ahe":          ("BLS",  "monthly_1st_fri"),
     "avg_weekly_hours":("BLS","monthly_1st_fri"),
     "jolts_open":   ("FRED", "monthly_jolts"),
+    # ---- 就业行业细分 / 周工时 / 黄金年龄参与率（随非农报告发布）----
+    "manemp":       ("FRED", "monthly_1st_fri"),
+    "uscons":       ("FRED", "monthly_1st_fri"),
+    "usmine":       ("FRED", "monthly_1st_fri"),
+    "temphelps":    ("FRED", "monthly_1st_fri"),
+    "uspbs":        ("FRED", "monthly_1st_fri"),
+    "usehs":        ("FRED", "monthly_1st_fri"),
+    "ustrade":      ("FRED", "monthly_1st_fri"),
+    "uswtrade":     ("FRED", "monthly_1st_fri"),
+    "usfire":       ("FRED", "monthly_1st_fri"),
+    "usinfo":       ("FRED", "monthly_1st_fri"),
+    "uslah":        ("FRED", "monthly_1st_fri"),
+    "usgovt":       ("FRED", "monthly_1st_fri"),
+    "awhman":       ("FRED", "monthly_1st_fri"),
+    "awhaetp":      ("FRED", "monthly_1st_fri"),
+    "prime_participation": ("FRED", "monthly_1st_fri"),
     # ---- 月频通胀（月中 CPI，月末 PCE）----
     "cpi":          ("FRED", "monthly_mid"),
     "cpi_core":     ("FRED", "monthly_mid"),
@@ -287,6 +336,22 @@ INDICATOR_META = {
     "claims":       {"source": "劳工部 DOL",   "unit": "千人", "scale": 0.001},  # 原始：人(Number)
     "ahe":          {"source": "BLS 劳工统计局", "unit": "美元/时", "scale": 1},
     "avg_weekly_hours": {"source": "BLS 劳工统计局", "unit": "小时", "scale": 1},
+    # ---- 就业行业细分 / 周工时 / 黄金年龄参与率 ----
+    "manemp":       {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "uscons":       {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "usmine":       {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "temphelps":    {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "uspbs":        {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "usehs":        {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "ustrade":      {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "uswtrade":     {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "usfire":       {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "usinfo":       {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "uslah":        {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "usgovt":       {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "awhman":       {"source": "BLS 劳工统计局", "unit": "小时", "scale": 1},
+    "awhaetp":      {"source": "BLS 劳工统计局", "unit": "小时", "scale": 1},
+    "prime_participation": {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},
     # ---- 通胀 ----
     "cpi":          {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},  # 已转同比
     "cpi_core":     {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},
@@ -319,6 +384,23 @@ INDICATOR_META = {
 
 # 需要做缩放（scale != 1）的指标：抓取后对 series 与 latest 统一缩放
 SCALED_INDICATORS = {k: v["scale"] for k, v in INDICATOR_META.items() if v.get("scale", 1) != 1}
+
+
+# 就业扩散指数的行业清单（CES 主要 supersector，不重叠，合计≈总非农）
+# 扩散指数 = 环比上升行业数 / 行业总数 × 100（参考 ISM PMI 的扩散指数构造法）
+DIFFUSION_INDUSTRIES = [
+    "manemp",    # 制造业
+    "uscons",    # 建筑业
+    "usmine",    # 采矿业
+    "ustrade",   # 零售贸易
+    "uswtrade",  # 批发贸易
+    "uspbs",     # 专业与商业服务
+    "usehs",     # 教育与医疗
+    "usfire",    # 金融活动
+    "usinfo",    # 信息业
+    "uslah",     # 休闲与酒店
+    "usgovt",    # 政府
+]
 
 
 # ---------------------------------------------------------------------------

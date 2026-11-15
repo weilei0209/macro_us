@@ -195,6 +195,34 @@ def yoy_series(series):
     return {"dates": dates, "values": vals}
 
 
+def yoy_by_date(series):
+    """基于日期对齐的同比（%）：对每个点找 12 个月前（含季频/月频均适用）的点算同比。
+    季频数据（如 ECI，3 个月一点）用 12 个月前的点正好是去年同季。"""
+    pts = [p for p in series if p["value"] is not None]
+    pts.sort(key=lambda x: x["date"])
+    pmap = {p["date"]: p["value"] for p in pts}
+    dates = [p["date"] for p in pts]
+    from datetime import date as _date
+    out_dates, out_vals = [], []
+    for d in dates:
+        y, m = int(d[:4]), int(d[5:7])
+        # 12 个月前的目标日期（月频对齐）
+        ty = y - 1 if m > 1 else y - 2
+        tm = m - 1 if m > 1 else 12
+        # 找 <= 目标日期的最近点（季频时可能无精确匹配，取不超过的最近点）
+        target = f"{ty:04d}-{tm:02d}-01"
+        best = None
+        for pd in dates:
+            if pd <= target:
+                best = pd
+            else:
+                break
+        if best and best in pmap and pmap[best] != 0 and d >= CHART_HISTORY_START:
+            out_dates.append(d)
+            out_vals.append((pmap[d] / pmap[best] - 1) * 100)
+    return {"dates": out_dates, "values": out_vals}
+
+
 def freq_rule_for_chart(chart):
     """根据图表的数据源指标，返回其发布规则说明（无则返回空字符串）。"""
     sids = chart.get("series", [])
@@ -284,6 +312,12 @@ def payrolls_revision_chart(series_data):
     }
 
 
+def align_series(dates, series):
+    """把序列值按给定 dates 对齐（缺值填 null），供多序列不同频率图表使用。"""
+    m = {p["date"]: p["value"] for p in series if p["value"] is not None}
+    return [m.get(d) for d in dates]
+
+
 def build_chart(series_data, chart):
     cid = chart["id"]
     rule = freq_rule_for_chart(chart)
@@ -299,6 +333,49 @@ def build_chart(series_data, chart):
         return {"dates": cpi["dates"], "release_rule": rule, "series": [
             {"name": "CPI 同比", "values": cpi["values"], "color": "#e5484d"},
             {"name": "PCE 同比", "values": pce["values"], "color": "#3b82f6"},
+        ]}
+    # ---- 就业页新增图表 ----
+    if cid == "emp_diffusion":
+        d = series_points(series_data.get("emp_diffusion", []))
+        return {"dates": d["dates"], "release_rule": "统计月数据 · 次月首周周五发布",
+                "series": [{"name": "就业扩散指数", "values": d["values"], "color": "#f5a623"}]}
+    if cid == "emp_cyclical":
+        # 周期敏感行业：工业部门（制造+建筑+采矿）vs 临时工服务
+        goods = series_data.get("goods_emp", [])
+        temp = series_data.get("temphelps", [])
+        dg = series_points(goods)
+        dt = series_points(temp)
+        # 以工业部门日期为基准对齐临时工
+        dates = dg["dates"]
+        temp_aligned = align_series(dates, temp)
+        return {"dates": dates, "release_rule": "统计月数据 · 次月首周周五发布", "series": [
+            {"name": "工业部门（制造+建筑+采矿）", "values": dg["values"], "color": "#e5484d"},
+            {"name": "临时工服务", "values": temp_aligned, "color": "#3b82f6"},
+        ]}
+    if cid == "emp_hours":
+        # 周工时：制造业 vs 私营部门（领先指标）
+        man = series_data.get("awhman", [])
+        priv = series_data.get("awhaetp", [])
+        dm = series_points(man)
+        dates = dm["dates"]
+        priv_aligned = align_series(dates, priv)
+        return {"dates": dates, "release_rule": "统计月数据 · 次月首周周五发布", "series": [
+            {"name": "制造业周工时", "values": dm["values"], "color": "#e5484d"},
+            {"name": "私营部门周工时", "values": priv_aligned, "color": "#3b82f6"},
+        ]}
+    if cid == "emp_prime":
+        d = series_points(series_data.get("prime_participation", []))
+        return {"dates": d["dates"], "release_rule": "统计月数据 · 次月首周周五发布",
+                "series": [{"name": "黄金年龄劳动参与率（25-54）", "values": d["values"], "color": "#34d399"}]}
+    if cid == "emp_wages":
+        # 工资：AHE 同比（月频）vs ECI 同比（季频），统一转同比对比
+        ahe_yoy = yoy_by_date(series_data.get("ahe", []))
+        eci_yoy = yoy_by_date(series_data.get("eci_wages", []))
+        dates = ahe_yoy["dates"]
+        eci_aligned = align_series(dates, [{"date": d, "value": v} for d, v in zip(eci_yoy["dates"], eci_yoy["values"])])
+        return {"dates": dates, "release_rule": "AHE 统计月数据 · ECI 统计季度数据 · 同比增速对比", "series": [
+            {"name": "平均时薪 AHE 同比", "values": ahe_yoy["values"], "color": "#e5484d"},
+            {"name": "雇佣成本指数 ECI 同比", "values": eci_aligned, "color": "#8b5cf6"},
         ]}
     names = {"us10y": "10Y", "us2y": "2Y", "tips10y": "r(实际利率)", "gdp_qoq": "g(实际增速)",
              "fwd5y5y": "5y5y", "on_rrp": "ON RRP", "bei10y": "BEI 10Y", "unrate": "失业率",
@@ -398,6 +475,40 @@ THEME_TIPS = {
         ("金融条件五渠道", "利率、汇率、信用利差、股市、地产——货币政策通过金融条件传导至实体。"),
     ],
 }
+
+
+# ---------------------------------------------------------------------------
+# 就业页专属：按 CES / CPS / 其他 三大调查体系分块（用分割线分隔）
+# ---------------------------------------------------------------------------
+EMPLOYMENT_SECTIONS = [
+    {
+        "icon": "🏭", "title": "一、CES 企业调查（岗位口径）",
+        "desc": "12 万家企业/63 万工作地点，产出非农新增、行业就业、周工时、工资。看新增读 CES。",
+        "charts": [
+            {"id": "emp_payrolls", "title": "非农新增（含历史修订）", "sub": "实线=最新修订值；虚线=首次发布值与 1 次修正值（非农发布后回溯修正前 2 个月）", "series": ["payrolls"], "color": "#e5484d"},
+            {"id": "emp_diffusion", "title": "就业扩散指数", "sub": "11 个主要行业环比上升占比，参考 PMI 构造（3MMA），衡量就业改善的广度", "series": ["emp_diffusion"], "color": "#f5a623"},
+            {"id": "emp_cyclical", "title": "周期敏感行业就业", "sub": "工业部门（制造+建筑+采矿）vs 临时工服务，周期拐点的领先信号", "series": ["goods_emp", "temphelps"], "color": "#e5484d"},
+            {"id": "emp_hours", "title": "周工时（领先指标）", "sub": "制造业 vs 私营部门平均周工时，领先失业率与衰退", "series": ["awhman", "awhaetp"], "color": "#e5484d"},
+        ],
+    },
+    {
+        "icon": "👥", "title": "二、CPS 家庭调查（人数口径）",
+        "desc": "6 万户家庭，产出失业率、劳动参与率。看结构与失业读 CPS。",
+        "charts": [
+            {"id": "emp_unrate", "title": "失业率 U3", "sub": "家庭调查（CPS）口径", "series": ["unrate"], "color": "#f5a623"},
+            {"id": "emp_prime", "title": "黄金年龄劳动参与率（25-54）", "sub": "剔除年龄结构噪音，才有周期含义", "series": ["prime_participation"], "color": "#34d399"},
+        ],
+    },
+    {
+        "icon": "💵", "title": "三、其他：匹配效率与工资",
+        "desc": "JOLTS / 首申衡量劳动力市场匹配与流动，AHE / ECI 衡量工资通胀。",
+        "charts": [
+            {"id": "emp_vu", "title": "V/U 比率", "sub": "岗位空缺 / 失业人数，领先工资通胀约 2 季度", "series": [], "color": "#e5484d"},
+            {"id": "emp_claims", "title": "首申失业金", "sub": "唯一周度就业指标，领先失业率", "series": ["claims"], "color": "#3b82f6"},
+            {"id": "emp_wages", "title": "工资增速：AHE vs ECI", "sub": "平均时薪（构成偏差）vs 雇佣成本指数（固定权重、美联储首选），同比对比", "series": ["ahe", "eci_wages"], "color": "#e5484d"},
+        ],
+    },
+]
 
 
 # 专题独立页的图表定义（topic_id -> 图表列表）
@@ -528,9 +639,10 @@ def metric_cards(groups, series_data, cats):
     return "".join(parts)
 
 
-def charts_html(chart_defs, series_data):
+def charts_html(chart_defs, series_data, data_map=None):
+    """渲染一组图表卡片的 HTML。若传入 data_map（dict），则把图表数据累积进去，
+    由调用方最后统一用 charts_script(data_map) 输出渲染脚本（避免多次定义 window.__CHARTS 互相覆盖）。"""
     boxes = []
-    data_map = {}
     for c in chart_defs:
         note = chart_meta(c)
         note_html = f'<div class="c-meta">{esc(note)}</div>' if note else ''
@@ -541,8 +653,13 @@ def charts_html(chart_defs, series_data):
             f'{note_html}'
             f'<div class="chart-box" id="{c["id"]}"></div></div>'
         )
-        data_map[c["id"]] = build_chart(series_data, c)
-    html = '<div class="chart-grid">' + "".join(boxes) + '</div>'
+        if data_map is not None:
+            data_map[c["id"]] = build_chart(series_data, c)
+    return '<div class="chart-grid">' + "".join(boxes) + '</div>'
+
+
+def charts_script(data_map):
+    """输出 window.__CHARTS 数据 + 渲染脚本（页面级统一调用一次）。"""
     js = (
         '<script>\n'
         'window.__CHARTS = ' + json.dumps(data_map, ensure_ascii=False) + ';\n'
@@ -554,7 +671,7 @@ def charts_html(chart_defs, series_data):
         '});\n'
         '</script>\n'
     )
-    return html + js
+    return js
 
 
 def chart_meta(chart):
@@ -569,6 +686,12 @@ def chart_meta(chart):
         "chart_infl_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
         "inf_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
         "td_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
+        # 就业页新增
+        "emp_diffusion": "来源 BLS · 单位 % · 11 个主要行业环比上升占比（参考 PMI 扩散指数构造，3MMA）",
+        "emp_cyclical": "来源 BLS · 单位 千人 · 工业部门=制造+建筑+采矿，周期敏感行业领先指标",
+        "emp_hours": "来源 BLS · 单位 小时 · 周工时领先失业率与衰退（制造 vs 私营）",
+        "emp_prime": "来源 BLS（CPS） · 单位 % · 黄金年龄 25-54 岁劳动参与率，剔年龄结构噪音",
+        "emp_wages": "来源 BLS · 单位 % · AHE（构成偏差）vs ECI（固定权重、美联储首选），同比对比",
     }
     cid = chart["id"]
     if cid in derived_note:
@@ -748,7 +871,9 @@ def render_home(latest_data, series_data, reports):
     H.append(signals_html(reports))
 
     H.append(section_head("📊", "关键趋势"))
-    H.append(charts_html(HOME_CHARTS, series_data))
+    home_charts_data = {}
+    H.append(charts_html(HOME_CHARTS, series_data, home_charts_data))
+    H.append(charts_script(home_charts_data))
 
     H.append(section_head("🗓️", "月度发布节奏（该盯什么数据）"))
     H.append(render_calendar())
@@ -792,15 +917,37 @@ def render_theme(fn, title, desc, cats, latest_data, series_data):
         H.append(section_head("💡", "口径要点"))
         H.append(tips_html(tips))
 
-    if charts:
-        H.append(section_head("📊", "核心图表"))
-        H.append(charts_html(charts, series_data))
-
-    H.append(section_head("📌", "全部指标", count=sum(len(groups.get(c, [])) for c in cats)))
-    H.append(metric_cards(groups, series_data, cats))
+    if key == "employment":
+        # 就业页专属：CES / CPS / 其他 三大部分，用分割线分隔（不用"核心图表+全部指标"模板）
+        H.append(employment_sections_html(series_data))
+    else:
+        if charts:
+            H.append(section_head("📊", "核心图表"))
+            theme_charts_data = {}
+            H.append(charts_html(charts, series_data, theme_charts_data))
+            H.append(charts_script(theme_charts_data))
+        H.append(section_head("📌", "全部指标", count=sum(len(groups.get(c, [])) for c in cats)))
+        H.append(metric_cards(groups, series_data, cats))
 
     H.append(page_foot())
     return "".join(H)
+
+
+def employment_sections_html(series_data):
+    """就业页三大部分：CES / CPS / 其他，用分割线（.divider）分隔，每个图表支持点击放大。"""
+    blocks = []
+    data_map = {}
+    for i, sec in enumerate(EMPLOYMENT_SECTIONS):
+        if i > 0:
+            blocks.append('<div class="divider"></div>')
+        blocks.append(
+            f'<div class="part-head"><span class="part-icon">{sec["icon"]}</span>'
+            f'<div class="part-text"><h3>{esc(sec["title"])}</h3>'
+            f'<p>{esc(sec["desc"])}</p></div></div>'
+        )
+        blocks.append(charts_html(sec["charts"], series_data, data_map))
+    blocks.append(charts_script(data_map))
+    return "".join(blocks)
 
 
 def render_topics(latest_data, series_data, reports):
@@ -879,7 +1026,9 @@ def render_topic_detail(r, series_data, updated, beveridge_html=None):
         H.append(beveridge_html)
     elif charts:
         H.append(section_head("📊", "数据图表"))
-        H.append(charts_html(charts, series_data))
+        topic_charts_data = {}
+        H.append(charts_html(charts, series_data, topic_charts_data))
+        H.append(charts_script(topic_charts_data))
 
     if r.get("watch"):
         H.append(section_head("🔭", "下一步关注"))
