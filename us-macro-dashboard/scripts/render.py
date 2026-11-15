@@ -383,11 +383,13 @@ def build_chart(series_data, chart):
             {"name": "PCE 同比", "values": pce["values"], "color": "#3b82f6"},
         ]}
     if cid == "inf_yoy":
-        # 通胀页：CPI vs PCE 环比（月度环比 MoM，均季调）
+        # 通胀页：CPI vs PCE 环比（月度环比 MoM，均季调），含核心 CPI 环比
         cpi = mom_series(series_data.get("cpi", []))
         pce = mom_series(series_data.get("pcepi", []))
+        core = mom_series(series_data.get("cpi_core", []))
         return {"dates": cpi["dates"], "release_rule": rule, "series": [
             {"name": "CPI 环比", "values": cpi["values"], "color": "#e5484d"},
+            {"name": "核心 CPI 环比", "values": core["values"], "color": "#f5a623"},
             {"name": "PCE 环比", "values": pce["values"], "color": "#3b82f6"},
         ]}
     if cid == "inf_core":
@@ -483,7 +485,7 @@ THEME_CHARTS = {
         {"id": "emp_claims", "title": "首申失业金", "sub": "唯一周度就业指标，领先失业率", "series": ["claims"], "color": "#3b82f6"},
     ],
     "inflation": [
-        {"id": "inf_yoy", "title": "CPI vs PCE 环比", "sub": "两套口径的月度环比（MoM，季调），看边际通胀动能", "series": [], "color": "#e5484d"},
+        {"id": "inf_yoy", "title": "CPI vs PCE 环比", "sub": "两套口径的月度环比（MoM，季调），含核心 CPI，看边际通胀动能", "series": [], "color": "#e5484d"},
         {"id": "inf_core", "title": "核心通胀环比：核心商品 vs 核心服务", "sub": "核心 CPI 拆分商品与服务两分项的月度环比，服务环比更黏", "series": ["core_goods_cpi", "core_services_cpi"], "color": "#e5484d"},
         {"id": "inf_housing", "title": "住房通胀环比：新租约 vs CPI 租金", "sub": "Zillow 新租约租金（ZORI）领先 CPI 租金约 12 个月，看边际传导", "series": ["zori", "cpi_rent"], "color": "#e5484d"},
         {"id": "inf_5y5y", "title": "5y5y 远期通胀补偿", "sub": "最严格的锚定指标", "series": ["fwd5y5y"], "color": "#f5a623"},
@@ -762,7 +764,7 @@ def chart_meta(chart):
         "emp_vu": "来源 BLS（JOLTS + CPS） · 单位 倍 · 岗位空缺 ÷ 失业人数",
         "td_vu": "来源 BLS（JOLTS + CPS） · 单位 倍 · 岗位空缺 ÷ 失业人数",
         "chart_infl_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
-        "inf_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 月度环比（MoM，季调）对比",
+        "inf_yoy": "来源 BLS / BEA · 单位 % · CPI、核心 CPI 与 PCE 月度环比（MoM，季调）对比",
         "td_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
         "inf_core": "来源 BLS · 单位 % · 核心商品=剔除食品能源商品；核心服务=剔除能源服务，月度环比（季调）",
         "inf_housing": "来源 Zillow / BLS · 单位 % · ZORI 为新挂牌租金（领先），CPI 租金含续约（滞后约 12 个月），两线均月度环比（季调）",
