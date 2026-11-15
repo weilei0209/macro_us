@@ -219,25 +219,32 @@ def payrolls_revision_chart(series_data):
         except Exception:
             rev = None
 
-    def sparse(vals, keep_last):
+    def sparse(vals, ref_vals=None):
+        """生成虚线序列：只对"确实发生过修订"的月份显示虚线点。
+        判定：该月修订值存在、且与最新值不同（相差 >= 0.05）。"""
         out = [None] * len(dates)
         if not rev:
             return out
-        # 建立 month -> 修订值 映射，只取与 dates 末尾对齐的最近几个月
+        # 建立 month -> 修订值 与 month -> 最新值 映射
         rm = dict(zip(rev.get("months", []), vals))
+        lm = dict(zip(rev.get("months", []), rev.get("latest_mom", [])))
         n = len(dates)
         for i in range(n):
             m = dates[i][:7]
-            if i >= n - keep_last and m in rm and rm[m] is not None:
-                out[i] = rm[m]
+            if m not in rm or rm[m] is None:
+                continue
+            # 仅当修订值与最新值不同（发生过修订）时，才画虚线点
+            if m in lm and lm[m] is not None and abs(rm[m] - lm[m]) < 0.05:
+                continue
+            out[i] = rm[m]
         return out
 
     if rev:
         initial = rev.get("initial_mom", [])
         rev1 = rev.get("rev1_mom", [])
-        series.append({"name": "首次发布值（调整前）", "values": sparse(initial, 3),
+        series.append({"name": "首次发布值（调整前）", "values": sparse(initial),
                        "color": "#f5a623", "dashed": True, "showSymbol": True})
-        series.append({"name": "1 次修正后", "values": sparse(rev1, 2),
+        series.append({"name": "1 次修正后", "values": sparse(rev1),
                        "color": "#3b82f6", "dashed": True, "showSymbol": True})
 
     return {
@@ -405,6 +412,9 @@ def page_head(title, active, updated):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)} · 美国宏观数据看板</title>
+<link rel="icon" type="image/png" sizes="256x256" href="assets/koala-us-macro.png">
+<link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+<link rel="apple-touch-icon" href="assets/koala-us-macro-180.png">
 <link rel="stylesheet" href="assets/style.css">
 <script src="assets/echarts.min.js"></script>
 <script src="assets/charts.js"></script>
@@ -741,6 +751,9 @@ def render_topic_detail(r, series_data, updated, beveridge_html=None):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)} · 美国宏观数据看板</title>
+<link rel="icon" type="image/png" sizes="256x256" href="../assets/koala-us-macro.png">
+<link rel="icon" type="image/x-icon" href="../assets/favicon.ico">
+<link rel="apple-touch-icon" href="../assets/koala-us-macro-180.png">
 <link rel="stylesheet" href="../assets/style.css">
 <script src="../assets/echarts.min.js"></script>
 <script src="../assets/charts.js"></script>
