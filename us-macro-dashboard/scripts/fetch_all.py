@@ -20,7 +20,7 @@ from indicators import (FRED_SERIES, FRED_META, BLS_SERIES, RELEASE_CALENDAR,
                         SCALED_INDICATORS, DIFFUSION_INDUSTRIES)
 from fetcher import (FredClient, BlsClient, BeaClient, CensusClient,
                      load_cache, save_cache, which_indicators_due,
-                     cache_path)
+                     cache_path, fetch_zillow_zori)
 
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -374,6 +374,24 @@ def main():
         except Exception as e:
             log(f"  BLS 抓取失败: {e}")
 
+    # 3.5 抓取 Zillow ZORI（新增租约租金领先指标，非 FRED/BLS，走 Zillow 公开 CSV）
+    # 全量模式与增量模式都抓（数据源小、且 ZORI 每月更新滞后约 2 周）
+    try:
+        zori = fetch_zillow_zori("United States")
+        if zori:
+            all_series["zori"] = zori
+            save_cache("zori", zori)
+            log(f"  Zillow ZORI: {len(zori)} 点, 最新 {zori[-1]['date'] if zori else 'N/A'}")
+        else:
+            log("  Zillow ZORI 抓取为空")
+    except Exception as e:
+        cached = load_cache("zori")
+        if cached:
+            all_series["zori"] = cached
+            log(f"  Zillow ZORI 抓取失败({e})，用缓存 {len(cached)} 点")
+        else:
+            log(f"  Zillow ZORI 抓取失败且无缓存: {e}")
+
     # 4. 计算派生指标
     derived = {}
     # V/U 比率 = JOLTS空缺 / 失业人数；失业人数 = 失业率 * 劳动力
@@ -404,7 +422,9 @@ def main():
     for src, out in [("cpi", "cpi_yoy"), ("pcepi", "pce_yoy"),
                      ("cpi_core", "core_cpi_yoy"), ("pce_core", "core_pce_yoy"),
                      ("core_goods_cpi", "core_goods_yoy"),
-                     ("core_services_cpi", "core_services_yoy")]:
+                     ("core_services_cpi", "core_services_yoy"),
+                     ("cpi_rent", "cpi_rent_yoy"),
+                     ("zori", "zori_yoy")]:
         s = all_series.get(src, [])
         if s:
             y = pct_change_yoy(s)
@@ -475,6 +495,7 @@ def main():
         "cpi": "cpi_yoy", "cpi_core": "core_cpi_yoy",
         "pcepi": "pce_yoy", "pce_core": "core_pce_yoy", "cpi_median": None,
         "core_goods_cpi": "core_goods_yoy", "core_services_cpi": "core_services_yoy",
+        "cpi_rent": "cpi_rent_yoy", "zori": "zori_yoy",
     }
     latest = {}
     # 派生序列（仅供图表/专题使用，不作为独立指标卡展示）

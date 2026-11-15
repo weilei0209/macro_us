@@ -4,7 +4,7 @@
 美国宏观数据看板 - 数据拉取层
 四个官方 API 客户端 + 本地缓存 + 发布日历驱动的精准增量更新。
 """
-import os, json, time, datetime, urllib.request, urllib.parse
+import os, json, time, datetime, urllib.request, urllib.parse, csv, io
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CACHE_DIR = os.path.join(BASE_DIR, "data", "cache")
@@ -190,7 +190,41 @@ class CensusClient:
 
 
 # ---------------------------------------------------------------------------
-# 五、发布日历判定
+# 五、Zillow ZORI 抓取（新增租约租金的领先指标）
+# ---------------------------------------------------------------------------
+ZORI_URL = "https://files.zillowstatic.com/research/public_csvs/zori/Metro_zori_uc_sfrcondomfr_sm_month.csv"
+
+def fetch_zillow_zori(region_name="United States"):
+    """从 Zillow 公开数据下载 ZORI（Zillow Observed Rent Index，观测挂牌租金），
+    返回美国全国月度序列 [{date, value}]（value 为美元/月，smoothed、未季调）。
+    ZORI 是新挂牌房源的挂牌租金，领先 CPI 租金（含续约）约 12 个月。"""
+    req = urllib.request.Request(ZORI_URL, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = r.read().decode("utf-8")
+    rows = list(csv.reader(io.StringIO(data)))
+    if not rows:
+        return []
+    header = rows[0]
+    # 找目标地区行（RegionName 在第 3 列，索引 2）
+    for row in rows[1:]:
+        if len(row) > 2 and row[2].strip() == region_name:
+            out = []
+            for h, v in zip(header, row):
+                if not h.startswith("20") or not v:
+                    continue
+                try:
+                    val = float(v)
+                except (ValueError, TypeError):
+                    continue
+                # 日期 "2015-01-31" -> "2015-01-01"（与 FRED 月频对齐）
+                date = h[:7] + "-01"
+                out.append({"date": date, "value": val})
+            return out
+    return []
+
+
+# ---------------------------------------------------------------------------
+# 六、发布日历判定
 # ---------------------------------------------------------------------------
 def _nth_weekday(year, month, weekday, nth):
     """返回某月第 nth 个 weekday（0=周一..6=周日）的日期。"""
@@ -240,7 +274,7 @@ def which_indicators_due(calendar, today=None):
 
 
 # ---------------------------------------------------------------------------
-# 六、主拉取流程
+# 七、主拉取流程
 # ---------------------------------------------------------------------------
 def fetch_fred_series(series_ids, client=None):
     client = client or FredClient()
