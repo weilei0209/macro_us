@@ -3,6 +3,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>通胀 · 美国宏观数据看板</title>
+<script>
+// 在 CSS 加载前立即应用已保存的主题，避免切换标签页时先闪黑金默认再切回浅色（FOUC）
+(function(){
+var t=null;try{t=localStorage.getItem('us-macro-theme');}catch(e){}
+if(!t){var h=new Date().getHours();t=(h>=6&&h<18)?'light':'dark';}
+document.documentElement.setAttribute('data-theme',t);
+})();
+</script>
 <link rel="icon" type="image/png" sizes="256x256" href="assets/koala-us-macro.png">
 <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
 <link rel="apple-touch-icon" href="assets/koala-us-macro-180.png">
@@ -15,7 +23,7 @@
   <div class="links"><a href="index.html">首页</a><a href="employment.html">就业</a><a href="inflation.html" class="active">通胀</a><a href="growth.html">增长</a><a href="fiscal.html">财政</a><a href="monetary.html">货币</a><a href="leading.html">领先</a><a href="topics.html">专题</a><a href="about.html">关于</a></div>
   <div class="spacer"></div>
   <div class="update">上次更新<br><b>2026-11-15</b></div>
-  <button class="theme-toggle" aria-label="切换主题" title="切换明暗主题">🌙</button>
+  <button class="theme-toggle" aria-label="切换主题" title="切换明暗主题"></button>
 </div></div>
 <div class="wrap">
 <div class="pagehead"><div class="crumb">主题</div><h2>通胀</h2><div class="desc">政策之锚：CPI / PCE / 通胀预期，美联储 2% 目标的全部口径</div></div><div class="section-head"><span class="icon">💡</span><h3>口径要点</h3><span class="line"></span></div><div class="tip"><div class="tip-title">💡 CPI &#x27;6211&#x27; 结构</div><div class="tip-body">6 核心服务 / 2 核心商品 / 1 食品 / 1 能源。住房权重 36% 且统计滞后。</div></div><div class="tip"><div class="tip-title">💡 超级核心服务</div><div class="tip-body">鲍威尔三分类里，剔除住房的核心服务是美联储最警惕的分项。</div></div><div class="tip"><div class="tip-title">💡 CPI vs PCE 四重差异</div><div class="tip-body">医疗权重 8% vs 17%、住房 36% vs 15%、拉氏 vs 链式、权重来源不同——解释了美联储盯 PCE、市场盯 CPI 的分歧。</div></div><div class="tip"><div class="tip-title">💡 锚定观测</div><div class="tip-body">最严格地衡量通胀预期是否锚定，看 5y5y 远期通胀补偿，而非绝对通胀水平。</div></div><div class="section-head"><span class="icon">📊</span><h3>核心图表</h3><span class="line"></span></div><div class="chart-grid"><div class="chart-card"><div class="c-title">CPI vs PCE 同比<span class="c-zoom" title="点击放大">⤢</span></div><div class="c-sub">两套口径的差异，美联储盯 PCE</div><div class="c-meta">来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比</div><div class="chart-box" id="inf_yoy"></div></div><div class="chart-card"><div class="c-title">核心通胀：核心商品 vs 核心服务<span class="c-zoom" title="点击放大">⤢</span></div><div class="c-sub">核心 CPI 拆分为商品与服务两分项，服务是当前通胀粘性的主因</div><div class="c-meta">来源 BLS · 单位 % · 核心商品=剔除食品能源商品；核心服务=剔除能源服务，两分项合计即核心 CPI</div><div class="chart-box" id="inf_core"></div></div><div class="chart-card"><div class="c-title">5y5y 远期通胀补偿<span class="c-zoom" title="点击放大">⤢</span></div><div class="c-sub">最严格的锚定指标</div><div class="c-meta">来源 美联储 · 单位 % · 当期数据（每日）</div><div class="chart-box" id="inf_5y5y"></div></div><div class="chart-card"><div class="c-title">10Y 盈亏平衡通胀率<span class="c-zoom" title="点击放大">⤢</span></div><div class="c-sub">市场定价的通胀预期</div><div class="c-meta">来源 美联储 · 单位 % · 当期数据（每日）</div><div class="chart-box" id="inf_bei"></div></div></div><script>

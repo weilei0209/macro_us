@@ -3,6 +3,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>增长 · 美国宏观数据看板</title>
+<script>
+// 在 CSS 加载前立即应用已保存的主题，避免切换标签页时先闪黑金默认再切回浅色（FOUC）
+(function(){
+var t=null;try{t=localStorage.getItem('us-macro-theme');}catch(e){}
+if(!t){var h=new Date().getHours();t=(h>=6&&h<18)?'light':'dark';}
+document.documentElement.setAttribute('data-theme',t);
+})();
+</script>
 <link rel="icon" type="image/png" sizes="256x256" href="assets/koala-us-macro.png">
 <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
 <link rel="apple-touch-icon" href="assets/koala-us-macro-180.png">
@@ -15,7 +23,7 @@
   <div class="links"><a href="index.html">首页</a><a href="employment.html">就业</a><a href="inflation.html">通胀</a><a href="growth.html" class="active">增长</a><a href="fiscal.html">财政</a><a href="monetary.html">货币</a><a href="leading.html">领先</a><a href="topics.html">专题</a><a href="about.html">关于</a></div>
   <div class="spacer"></div>
   <div class="update">上次更新<br><b>2026-11-15</b></div>
-  <button class="theme-toggle" aria-label="切换主题" title="切换明暗主题">🌙</button>
+  <button class="theme-toggle" aria-label="切换主题" title="切换明暗主题"></button>
 </div></div>
 <div class="wrap">
 <div class="pagehead"><div class="crumb">主题</div><h2>增长</h2><div class="desc">国民账户：GDP / GDI / 消费 / 投资，产出缺口的剥洋葱四层</div></div><div class="section-head"><span class="icon">💡</span><h3>口径要点</h3><span class="line"></span></div><div class="tip"><div class="tip-title">💡 GDP &#x27;411&#x27; 结构</div><div class="tip-body">4 消费 / 1 投资 / 1 政府。看趋势看消费，看边际看投资。</div></div><div class="tip"><div class="tip-title">💡 剥洋葱四层</div><div class="tip-body">GDP → Final Sales → 国内购买者最终销售 → PDFP。PDFP 才是&#x27;核心 GDP&#x27;。</div></div><div class="tip"><div class="tip-title">💡 NBER vs 技术性衰退</div><div class="tip-body">连续两季负增长是&#x27;技术性衰退&#x27;；NBER 用一揽子（就业/消费/工业生产）判定。20% 以上的美股深度回撤几乎全发生在 NBER 衰退期。</div></div><div class="section-head"><span class="icon">📊</span><h3>核心图表</h3><span class="line"></span></div><div class="chart-grid"><div class="chart-card"><div class="c-title">实际 GDP<span class="c-zoom" title="点击放大">⤢</span></div><div class="c-sub">季频，环比折年看边际</div><div class="c-meta">来源 BEA 经济分析局 · 单位 十亿美元 · 统计季度数据 · 次季首月月末发布</div><div class="chart-box" id="gro_gdp"></div></div><div class="chart-card"><div class="c-title">GDP 环比折年<span class="c-zoom" title="点击放大">⤢</span></div><div class="c-sub">增长动能</div><div class="c-meta">来源 BEA 经济分析局 · 单位 % · 统计季度数据 · 次季首月月末发布</div><div class="chart-box" id="gro_qoq"></div></div><div class="chart-card"><div class="c-title">r vs g<span class="c-zoom" title="点击放大">⤢</span></div><div class="c-sub">增长化债空间</div><div class="c-meta">来源 美国财政部 / BEA 经济分析局 · 单位 % · 当期数据（每日）；统计季度数据 · 次季首月月末发布</div><div class="chart-box" id="gro_rg"></div></div></div><script>

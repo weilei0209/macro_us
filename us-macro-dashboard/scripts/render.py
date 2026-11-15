@@ -593,6 +593,14 @@ def page_head(title, active, updated):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{esc(title)} · 美国宏观数据看板</title>
+<script>
+// 在 CSS 加载前立即应用已保存的主题，避免切换标签页时先闪黑金默认再切回浅色（FOUC）
+(function(){{
+var t=null;try{{t=localStorage.getItem('us-macro-theme');}}catch(e){{}}
+if(!t){{var h=new Date().getHours();t=(h>=6&&h<18)?'light':'dark';}}
+document.documentElement.setAttribute('data-theme',t);
+}})();
+</script>
 <link rel="icon" type="image/png" sizes="256x256" href="assets/koala-us-macro.png">
 <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
 <link rel="apple-touch-icon" href="assets/koala-us-macro-180.png">
@@ -605,7 +613,7 @@ def page_head(title, active, updated):
   <div class="links">{''.join(nav_links)}</div>
   <div class="spacer"></div>
   <div class="update">上次更新<br><b>{esc(updated)}</b></div>
-  <button class="theme-toggle" aria-label="切换主题" title="切换明暗主题">🌙</button>
+  <button class="theme-toggle" aria-label="切换主题" title="切换明暗主题"></button>
 </div></div>
 <div class="wrap">
 '''
