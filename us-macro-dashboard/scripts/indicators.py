@@ -62,6 +62,8 @@ FRED_SERIES = {
     "cpi":          "CPIAUCSL",    # CPI 总
     "cpi_core":     "CPILFESL",    # 核心 CPI
     "cpi_median":   "MEDCPIM158SFRBCLE", # 中位 CPI
+    "core_goods_cpi":   "CUUR0000SACL1E", # 核心商品 CPI（剔除食品能源商品）
+    "core_services_cpi":"CUUR0000SASLE",  # 核心服务 CPI（剔除能源服务）
     "pcepi":        "PCEPI",       # PCE 价格指数
     "pce_core":     "PCEPILFE",    # 核心 PCE
     "pce":          "PCE",         # PCE 名义支出
@@ -126,6 +128,8 @@ FRED_META = {
     "cpi":        ("CPI 同比", "通胀"),
     "cpi_core":   ("核心 CPI 同比", "通胀"),
     "cpi_median": ("中位 CPI 同比", "通胀"),
+    "core_goods_cpi":   ("核心商品 CPI 同比", "通胀"),
+    "core_services_cpi":("核心服务 CPI 同比", "通胀"),
     "pcepi":      ("PCE 同比", "通胀"),
     "pce_core":   ("核心 PCE 同比", "通胀"),
     "pce":        ("PCE 名义支出", "增长"),
@@ -241,6 +245,8 @@ RELEASE_CALENDAR = {
     "cpi":          ("FRED", "monthly_mid"),
     "cpi_core":     ("FRED", "monthly_mid"),
     "cpi_median":   ("FRED", "monthly_mid"),
+    "core_goods_cpi":   ("FRED", "monthly_mid"),
+    "core_services_cpi":("FRED", "monthly_mid"),
     "cpi_bls":      ("BLS",  "monthly_mid"),
     "cpi_sa":       ("BLS",  "monthly_mid"),
     "cpi_core_bls": ("BLS",  "monthly_mid"),
@@ -356,6 +362,8 @@ INDICATOR_META = {
     "cpi":          {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},  # 已转同比
     "cpi_core":     {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},
     "cpi_median":   {"source": "克利夫兰联储", "unit": "%", "scale": 1},
+    "core_goods_cpi":   {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},
+    "core_services_cpi":{"source": "BLS 劳工统计局", "unit": "%", "scale": 1},
     "cpi_bls":      {"source": "BLS 劳工统计局", "unit": "指数", "scale": 1},
     "cpi_sa":       {"source": "BLS 劳工统计局", "unit": "指数", "scale": 1},
     "cpi_core_bls": {"source": "BLS 劳工统计局", "unit": "指数", "scale": 1},
@@ -413,6 +421,8 @@ DERIVED_INDICATORS = {
     "payrolls_3mma":{"deps": ["payrolls"], "desc": "非农新增 3 个月移动平均"},
     "cpi_yoy":      {"deps": ["cpi"], "desc": "CPI 同比（指数年化）"},
     "core_cpi_yoy": {"deps": ["cpi_core"], "desc": "核心 CPI 同比（剔除食品能源）"},
+    "core_goods_yoy": {"deps": ["core_goods_cpi"], "desc": "核心商品 CPI 同比（剔除食品能源商品）"},
+    "core_services_yoy": {"deps": ["core_services_cpi"], "desc": "核心服务 CPI 同比（剔除能源服务）"},
     "pce_yoy":      {"deps": ["pcepi"], "desc": "PCE 同比"},
     "core_pce_yoy": {"deps": ["pce_core"], "desc": "核心 PCE 同比"},
     "cpi_pce_gap":  {"deps": ["cpi_yoy", "pce_yoy"], "desc": "CPI-PCE 剪刀差（正常 +0.3~0.5，倒挂为异常）"},

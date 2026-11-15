@@ -402,7 +402,9 @@ def main():
 
     # CPI / PCE 同比
     for src, out in [("cpi", "cpi_yoy"), ("pcepi", "pce_yoy"),
-                     ("cpi_core", "core_cpi_yoy"), ("pce_core", "core_pce_yoy")]:
+                     ("cpi_core", "core_cpi_yoy"), ("pce_core", "core_pce_yoy"),
+                     ("core_goods_cpi", "core_goods_yoy"),
+                     ("core_services_cpi", "core_services_yoy")]:
         s = all_series.get(src, [])
         if s:
             y = pct_change_yoy(s)
@@ -472,6 +474,7 @@ def main():
     YOY_OVERRIDE = {
         "cpi": "cpi_yoy", "cpi_core": "core_cpi_yoy",
         "pcepi": "pce_yoy", "pce_core": "core_pce_yoy", "cpi_median": None,
+        "core_goods_cpi": "core_goods_yoy", "core_services_cpi": "core_services_yoy",
     }
     latest = {}
     # 派生序列（仅供图表/专题使用，不作为独立指标卡展示）

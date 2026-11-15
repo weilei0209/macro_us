@@ -367,6 +367,14 @@ def build_chart(series_data, chart):
             {"name": "CPI 同比", "values": cpi["values"], "color": "#e5484d"},
             {"name": "PCE 同比", "values": pce["values"], "color": "#3b82f6"},
         ]}
+    if cid == "inf_core":
+        # 核心商品 vs 核心服务：两个指数分别转同比（%），月频对齐
+        goods = yoy_series(series_data.get("core_goods_cpi", []))
+        svcs = yoy_series(series_data.get("core_services_cpi", []))
+        return {"dates": goods["dates"], "release_rule": rule, "series": [
+            {"name": "核心商品 CPI 同比", "values": goods["values"], "color": "#3b82f6"},
+            {"name": "核心服务 CPI 同比", "values": svcs["values"], "color": "#e5484d"},
+        ]}
     # ---- 就业页新增图表 ----
     if cid == "emp_diffusion":
         d = series_points(series_data.get("emp_diffusion", []))
@@ -442,6 +450,7 @@ THEME_CHARTS = {
     ],
     "inflation": [
         {"id": "inf_yoy", "title": "CPI vs PCE 同比", "sub": "两套口径的差异，美联储盯 PCE", "series": [], "color": "#e5484d"},
+        {"id": "inf_core", "title": "核心通胀：核心商品 vs 核心服务", "sub": "核心 CPI 拆分为商品与服务两分项，服务是当前通胀粘性的主因", "series": ["core_goods_cpi", "core_services_cpi"], "color": "#e5484d"},
         {"id": "inf_5y5y", "title": "5y5y 远期通胀补偿", "sub": "最严格的锚定指标", "series": ["fwd5y5y"], "color": "#f5a623"},
         {"id": "inf_bei", "title": "10Y 盈亏平衡通胀率", "sub": "市场定价的通胀预期", "series": ["bei10y"], "color": "#8b5cf6"},
     ],
@@ -712,6 +721,7 @@ def chart_meta(chart):
         "chart_infl_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
         "inf_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
         "td_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
+        "inf_core": "来源 BLS · 单位 % · 核心商品=剔除食品能源商品；核心服务=剔除能源服务，两分项合计即核心 CPI",
         # 就业页新增
         "emp_diffusion": "来源 BLS · 单位 % · 11 个主要行业环比上升占比（参考 PMI 扩散指数构造，3MMA）",
         "emp_cyclical": "来源 BLS · 单位 千人（月度新增） · 工业新增=制造+建筑+采矿环比增量，双轴对比非农新增的周期性",
