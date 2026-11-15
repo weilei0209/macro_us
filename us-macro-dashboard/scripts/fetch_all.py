@@ -16,7 +16,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(BASE_DIR, "scripts"))
 
 from indicators import (FRED_SERIES, FRED_META, BLS_SERIES, RELEASE_CALENDAR,
-                        DERIVED_INDICATORS, TOPIC_RULES)
+                        DERIVED_INDICATORS, TOPIC_RULES, INDICATOR_META,
+                        SCALED_INDICATORS)
 from fetcher import (FredClient, BlsClient, BeaClient, CensusClient,
                      load_cache, save_cache, which_indicators_due,
                      cache_path)
@@ -87,6 +88,20 @@ def ma3(values):
     if len(vals) < 3:
         return None
     return sum(vals[-3:]) / 3
+
+
+def apply_scale(ind, series):
+    """按 INDICATOR_META 的 scale 缩放序列值（如首申失业金"人"→"千人"除以 1000）。
+    在抓取后立即调用，保证 series.json / latest.json / 图表全部统一为显示单位。
+    未在 SCALED_INDICATORS 中的指标原样返回。"""
+    scale = SCALED_INDICATORS.get(ind)
+    if not scale or scale == 1:
+        return series
+    out = []
+    for p in series:
+        v = p["value"]
+        out.append({"date": p["date"], "value": (v * scale) if v is not None else None})
+    return out
 
 
 def sahm_rule_series(unrate_series):
@@ -238,6 +253,7 @@ def main():
         sid = FRED_SERIES[ind]
         try:
             obs = fred.series_observations(sid)
+            obs = apply_scale(ind, obs)   # 单位归一化（大数转"千/十亿"）
             all_series[ind] = obs
             save_cache(ind, obs)
             log(f"  FRED {ind} ({sid}): {len(obs)} 点, 最新 {obs[-1]['date'] if obs else 'N/A'}")
@@ -382,19 +398,23 @@ def main():
         lv = latest_value(series)
         if not lv:
             continue
+        # 元数据（来源 / 单位）：来自 INDICATOR_META
+        im = INDICATOR_META.get(ind, {})
+        source = im.get("source", "")
+        unit = im.get("unit", "")
         # 指数型指标用同比替代
         if ind in YOY_OVERRIDE and YOY_OVERRIDE[ind] and YOY_OVERRIDE[ind] in derived:
             d = derived[YOY_OVERRIDE[ind]]
             latest[ind] = {
                 "label": label, "category": cat,
                 "value": d["value"], "date": d["date"],
-                "unit": "%", "freq": RELEASE_CALENDAR.get(ind, ("FRED", "daily"))[1],
+                "unit": "%", "source": source, "freq": RELEASE_CALENDAR.get(ind, ("FRED", "daily"))[1],
             }
         else:
             latest[ind] = {
                 "label": label, "category": cat,
                 "value": lv["value"], "date": lv["date"],
-                "unit": "", "freq": RELEASE_CALENDAR.get(ind, ("FRED", "daily"))[1],
+                "unit": unit, "source": source, "freq": RELEASE_CALENDAR.get(ind, ("FRED", "daily"))[1],
             }
 
     # 6. 写入结果

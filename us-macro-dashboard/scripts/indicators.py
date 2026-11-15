@@ -249,6 +249,79 @@ FREQ_SHORT = {
 
 
 # ---------------------------------------------------------------------------
+# 五-补、指标元数据（来源 / 显示单位 / 缩放）
+# 数据说明：每个指标卡与图表下方的"数据说明"据此渲染。
+#   source：发布机构（数据经 FRED/BLS/BEA 等渠道转发）
+#   unit：显示单位（已按 scale 归一化后的中文单位）
+#   scale：缩放因子，把原始值转成显示单位（如首申失业金由"人"转"千人"，除以 1000）
+# 只对"0 太多"的大数指标做缩放，其余 scale=1 保持原始单位。
+# ---------------------------------------------------------------------------
+INDICATOR_META = {
+    # ---- 利率 / 利差 / 通胀预期（单位 %）----
+    "us10y":        {"source": "美国财政部",   "unit": "%", "scale": 1},
+    "us2y":         {"source": "美国财政部",   "unit": "%", "scale": 1},
+    "ffr":          {"source": "美联储",       "unit": "%", "scale": 1},
+    "sofr":         {"source": "纽约联储",     "unit": "%", "scale": 1},
+    "t10y2y":       {"source": "美国财政部",   "unit": "百分点", "scale": 1},
+    "t10y3m":       {"source": "美国财政部",   "unit": "百分点", "scale": 1},
+    "bei10y":       {"source": "美联储",       "unit": "%", "scale": 1},
+    "fwd5y5y":      {"source": "美联储",       "unit": "%", "scale": 1},
+    "tips10y":      {"source": "美国财政部",   "unit": "%", "scale": 1},
+    "mortgage30":   {"source": "房地美",       "unit": "%", "scale": 1},
+    "hy_spread":    {"source": "ICE BofA",     "unit": "百分点", "scale": 1},
+    "vix":          {"source": "CBOE",         "unit": "指数", "scale": 1},
+    "dxy":          {"source": "美联储",       "unit": "指数", "scale": 1},
+    # ---- 美联储资产负债表 / 流动性 ----
+    "fed_assets":   {"source": "美联储",       "unit": "十亿美元", "scale": 0.001},  # 原始：百万美元
+    "on_rrp":       {"source": "纽约联储",     "unit": "十亿美元", "scale": 1},
+    "reserves":     {"source": "美联储",       "unit": "十亿美元", "scale": 0.001},  # 原始：百万美元
+    "bank_loans":   {"source": "美联储",       "unit": "十亿美元", "scale": 1},
+    # ---- 就业 ----
+    "payrolls":     {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "unrate":       {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},
+    "u6rate":       {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},
+    "participation":{"source": "BLS 劳工统计局", "unit": "%", "scale": 1},
+    "labor_force":  {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "emratio":      {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},
+    "jolts_open":   {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
+    "claims":       {"source": "劳工部 DOL",   "unit": "千人", "scale": 0.001},  # 原始：人(Number)
+    "ahe":          {"source": "BLS 劳工统计局", "unit": "美元/时", "scale": 1},
+    "avg_weekly_hours": {"source": "BLS 劳工统计局", "unit": "小时", "scale": 1},
+    # ---- 通胀 ----
+    "cpi":          {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},  # 已转同比
+    "cpi_core":     {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},
+    "cpi_median":   {"source": "克利夫兰联储", "unit": "%", "scale": 1},
+    "cpi_bls":      {"source": "BLS 劳工统计局", "unit": "指数", "scale": 1},
+    "cpi_sa":       {"source": "BLS 劳工统计局", "unit": "指数", "scale": 1},
+    "cpi_core_bls": {"source": "BLS 劳工统计局", "unit": "指数", "scale": 1},
+    "cpi_supercore":{"source": "BLS 劳工统计局", "unit": "指数", "scale": 1},
+    "cpi_shelter":  {"source": "BLS 劳工统计局", "unit": "指数", "scale": 1},
+    "cpi_energy":   {"source": "BLS 劳工统计局", "unit": "指数", "scale": 1},
+    "cpi_food":     {"source": "BLS 劳工统计局", "unit": "指数", "scale": 1},
+    "pcepi":        {"source": "BEA 经济分析局", "unit": "%", "scale": 1},
+    "pce_core":     {"source": "BEA 经济分析局", "unit": "%", "scale": 1},
+    "pce":          {"source": "BEA 经济分析局", "unit": "十亿美元", "scale": 1},
+    "pce_real":     {"source": "BEA 经济分析局", "unit": "十亿美元", "scale": 1},
+    "mich_exp":     {"source": "密歇根大学",   "unit": "%", "scale": 1},
+    "umcsent":      {"source": "密歇根大学",   "unit": "指数", "scale": 1},
+    # ---- 增长 ----
+    "gdp_real":     {"source": "BEA 经济分析局", "unit": "十亿美元", "scale": 1},
+    "gdp_qoq":      {"source": "BEA 经济分析局", "unit": "%", "scale": 1},
+    "gdp_pot":      {"source": "CBO 国会预算办", "unit": "十亿美元", "scale": 1},
+    "gdi":          {"source": "BEA 经济分析局", "unit": "十亿美元", "scale": 1},
+    "inv_private":  {"source": "BEA 经济分析局", "unit": "十亿美元", "scale": 1},
+    "retail":       {"source": "Census 人口普查局", "unit": "十亿美元", "scale": 0.001},  # 原始：百万美元
+    "inv_sales":    {"source": "Census 人口普查局", "unit": "倍", "scale": 1},
+    "saving_rate":  {"source": "BEA 经济分析局", "unit": "%", "scale": 1},
+    "housing_starts":{"source": "Census 人口普查局", "unit": "千套", "scale": 1},
+    "eci_wages":    {"source": "BLS 劳工统计局", "unit": "指数", "scale": 1},
+}
+
+# 需要做缩放（scale != 1）的指标：抓取后对 series 与 latest 统一缩放
+SCALED_INDICATORS = {k: v["scale"] for k, v in INDICATOR_META.items() if v.get("scale", 1) != 1}
+
+
+# ---------------------------------------------------------------------------
 # 六、派生指标计算规则（专题分析的数据基础）
 # 每个派生指标：名称 -> (依赖的原始指标, 计算函数说明)
 # ---------------------------------------------------------------------------

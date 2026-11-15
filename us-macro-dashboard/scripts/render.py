@@ -22,7 +22,8 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 SITE_DIR = os.path.join(BASE_DIR, "site")
 ASSETS_SRC = os.path.join(BASE_DIR, "assets")
 
-from indicators import FRED_META, TOPIC_RULES, RELEASE_CALENDAR, RELEASE_RULE, FREQ_SHORT
+from indicators import (FRED_META, TOPIC_RULES, RELEASE_CALENDAR, RELEASE_RULE,
+                        FREQ_SHORT, INDICATOR_META)
 
 
 # ---------------------------------------------------------------------------
@@ -37,13 +38,20 @@ def fmt_val(v, unit="", kind="num"):
         return "—"
     if kind == "pct":
         return f"{v:+.2f}%"
+    # 带单位的数值：% / 指数等符号型单位紧贴数字，文字型单位（千人/十亿美元）前加空格
+    if unit in ("%", "指数", "倍"):
+        u = unit
+    elif unit:
+        u = " " + unit
+    else:
+        u = ""
     if abs(v) >= 1000:
-        return f"{v:,.1f}{unit}"
+        return f"{v:,.1f}{u}"
     if abs(v) >= 100:
-        return f"{v:.1f}{unit}"
+        return f"{v:.1f}{u}"
     if abs(v) >= 1:
-        return f"{v:.2f}{unit}"
-    return f"{v:.3f}{unit}"
+        return f"{v:.2f}{u}"
+    return f"{v:.3f}{u}"
 
 
 def fmt_date(d, freq=""):
@@ -58,6 +66,28 @@ def fmt_date(d, freq=""):
         return d[:4]
     # 其余（日/周/月频）：统一显示为 YYYY/MM/DD（月度即 YYYY/MM/01，可读为统计月）
     return d.replace("-", "/")
+
+
+def meta_note(ind, info=None):
+    """生成指标卡的"数据说明"行：来源 · 单位 · 更新周期（发布规则）。
+    ind 为内部指标名；info 为 latest.json 里该指标的元数据（可含 source/unit/freq）。"""
+    info = info or {}
+    im = INDICATOR_META.get(ind, {})
+    source = info.get("source") or im.get("source", "")
+    unit = info.get("unit") or im.get("unit", "")
+    freq = info.get("freq", "")
+    release = RELEASE_RULE.get(freq, "")
+    # 来源 · 单位 · 发布规则 三段拼接（缺省项自动省略）
+    parts = []
+    if source:
+        parts.append(f"来源 {source}")
+    if unit:
+        parts.append(f"单位 {unit}")
+    if release:
+        parts.append(release)
+    if not parts:
+        return ""
+    return " · ".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -483,16 +513,15 @@ def metric_cards(groups, series_data, cats):
                 cls = "up" if val is not None and val >= 0 else "down"
             spark_pts = [p["value"] for p in series_data.get(ind, []) if p["value"] is not None][-40:]
             spark_json = json.dumps(spark_pts)
-            # 发布规则说明：帮助区分"统计月份"与"发布时间"
-            freq = info.get("freq", "")
-            release_note = RELEASE_RULE.get(freq, "") if freq else ""
-            release_html = f'<div class="m-release">{esc(release_note)}</div>' if release_note else ''
+            # 数据说明：来源 · 单位 · 更新周期（发布规则）
+            note = meta_note(ind, info)
+            note_html = f'<div class="m-release">{esc(note)}</div>' if note else ''
             parts.append(
                 f'<div class="metric"><div class="m-label"><span>{esc(info["label"])}</span>'
-                f'<span class="freq">{esc(FREQ_SHORT.get(freq, freq))}</span></div>'
+                f'<span class="freq">{esc(FREQ_SHORT.get(info.get("freq", ""), info.get("freq", "")))}</span></div>'
                 f'<div class="m-value {cls}">{fmt_val(val, unit)}</div>'
                 f'<div class="m-date">{esc(fmt_date(info["date"], info.get("freq", "")))}</div>'
-                f'{release_html}'
+                f'{note_html}'
                 f'<div class="m-spark" data-spark=\'{spark_json}\'></div></div>'
             )
     parts.append('</div>')
@@ -503,10 +532,13 @@ def charts_html(chart_defs, series_data):
     boxes = []
     data_map = {}
     for c in chart_defs:
+        note = chart_meta(c)
+        note_html = f'<div class="c-meta">{esc(note)}</div>' if note else ''
         boxes.append(
             f'<div class="chart-card"><div class="c-title">{esc(c["title"])}'
             f'<span class="c-zoom" title="点击放大">⤢</span></div>'
             f'<div class="c-sub">{esc(c["sub"])}</div>'
+            f'{note_html}'
             f'<div class="chart-box" id="{c["id"]}"></div></div>'
         )
         data_map[c["id"]] = build_chart(series_data, c)
@@ -523,6 +555,45 @@ def charts_html(chart_defs, series_data):
         '</script>\n'
     )
     return html + js
+
+
+def chart_meta(chart):
+    """生成图表的"数据说明"行：来源 · 单位 · 更新周期。
+    普通图表取 series 指标的元数据；派生图表（series 为空）用内置口径说明。"""
+    sids = chart.get("series", [])
+    # 派生图表的固定口径说明
+    derived_note = {
+        "chart_vu": "来源 BLS（JOLTS + CPS） · 单位 倍 · 岗位空缺 ÷ 失业人数",
+        "emp_vu": "来源 BLS（JOLTS + CPS） · 单位 倍 · 岗位空缺 ÷ 失业人数",
+        "td_vu": "来源 BLS（JOLTS + CPS） · 单位 倍 · 岗位空缺 ÷ 失业人数",
+        "chart_infl_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
+        "inf_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
+        "td_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
+    }
+    cid = chart["id"]
+    if cid in derived_note:
+        return derived_note[cid]
+    if not sids:
+        return ""
+    # 单序列或双序列：取各指标来源/单位，来源去重合并
+    sources, units = [], []
+    for sid in sids:
+        im = INDICATOR_META.get(sid, {})
+        s = im.get("source", "")
+        u = im.get("unit", "")
+        if s and s not in sources:
+            sources.append(s)
+        if u and u not in units:
+            units.append(u)
+    rule = freq_rule_for_chart(chart)
+    parts = []
+    if sources:
+        parts.append("来源 " + " / ".join(sources))
+    if units:
+        parts.append("单位 " + " / ".join(units))
+    if rule:
+        parts.append(rule)
+    return " · ".join(parts)
 
 
 def kpi_html(derived):
