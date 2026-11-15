@@ -85,14 +85,10 @@
       return base;
     }
     var left = Object.assign({}, base);
-    left.name = (data.series[0] && data.series[0].name) || '';
-    left.nameTextStyle = {color:THEME.text3, fontSize:big?11:10};
     left.position = 'left';
     left.splitLine = {lineStyle:{color:THEME.splitline}};
     left.axisLabel = {color:THEME.text3, fontSize: big?11:10};
     var right = Object.assign({}, base);
-    right.name = (data.series[1] && data.series[1].name) || '';
-    right.nameTextStyle = {color:THEME.text3, fontSize:big?11:10};
     right.position = 'right';
     right.splitLine = {show:false};
     right.axisLabel = {color:THEME.text3, fontSize: big?11:10};
