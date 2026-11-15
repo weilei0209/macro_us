@@ -194,10 +194,10 @@
 
     if(data.dual_axis){
       var left = rangeFor(0), right = rangeFor(1);
-      var update = {};
-      if(left){ update['yAxis.0.min'] = left.min; update['yAxis.0.max'] = left.max; }
-      if(right){ update['yAxis.1.min'] = right.min; update['yAxis.1.max'] = right.max; }
-      if(Object.keys(update).length) chart.setOption(update);
+      var axes = [{}, {}];
+      if(left){ axes[0] = { min: left.min, max: left.max }; }
+      if(right){ axes[1] = { min: right.min, max: right.max }; }
+      chart.setOption({ yAxis: axes });
       return;
     }
     var r = rangeFor(0);
