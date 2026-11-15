@@ -226,6 +226,53 @@
     return chart;
   };
 
+  // 散点图（菲利普斯曲线等）：data = { xName, yName, series:[{name, color, symbolSize, data:[[x,y],...]}], markLine... }
+  window.renderScatter = function(el, data){
+    if(!data || !data.series || !data.series.length) return;
+    var series = data.series.map(function(s){
+      return {
+        name: s.name, type:'scatter', data: s.data,
+        symbolSize: s.symbolSize || 8,
+        itemStyle: {color: s.color, opacity: s.opacity == null ? 0.75 : s.opacity},
+        emphasis: {itemStyle:{opacity:1}}
+      };
+    });
+    var option = {
+      backgroundColor: THEME.bg,
+      grid:{left:56, right:24, top:40, bottom:48},
+      tooltip:{trigger:'item',
+        backgroundColor:THEME.card, borderColor:THEME.line,
+        textStyle:{color:THEME.text, fontSize:12},
+        formatter:function(p){
+          var pt = p.value;
+          return '<div style="font-weight:600;margin-bottom:2px;">'+p.seriesName+'</div>'+
+                 (data.xName||'x')+'：'+pt[0]+'<br/>'+
+                 (data.yName||'y')+'：'+Number(pt[1]).toFixed(2)+'<br/>'+
+                 (p.data[2] ? '统计期：'+p.data[2] : '');
+        }
+      },
+      legend:{top:0, right:0, textStyle:{color:THEME.text2, fontSize:11}, itemWidth:12, itemHeight:8},
+      xAxis:{type:'value', name:data.xName||'', nameLocation:'middle', nameGap:30,
+        nameTextStyle:{color:THEME.text2, fontSize:12},
+        axisLine:{lineStyle:{color:THEME.line}},
+        axisLabel:{color:THEME.text3, fontSize:11},
+        splitLine:{lineStyle:{color:THEME.splitline}},
+        scale:true},
+      yAxis:{type:'value', name:data.yName||'', nameLocation:'middle', nameGap:42,
+        nameTextStyle:{color:THEME.text2, fontSize:12},
+        axisLine:{lineStyle:{color:THEME.line}},
+        axisLabel:{color:THEME.text3, fontSize:11},
+        splitLine:{lineStyle:{color:THEME.splitline}},
+        scale:true},
+      series: series
+    };
+    var chart = echarts.init(el, null, {renderer:'canvas'});
+    chart.setOption(option);
+    chartInstances.push(chart);
+    window.addEventListener('resize', function(){ chart.resize(); });
+    return chart;
+  };
+
   // ===== 点击放大 =====
   // 点击图表卡片，弹出全屏模态框放大展示，支持拖动范围缩放
   var modalChart = null;
@@ -329,6 +376,12 @@
           Object.keys(window.__CHARTS).forEach(function(id){
             var el = document.getElementById(id);
             if(el) window.renderLineChart(el, window.__CHARTS[id]);
+          });
+        }
+        if(window.__SCATTERS){
+          Object.keys(window.__SCATTERS).forEach(function(id){
+            var el = document.getElementById(id);
+            if(el) window.renderScatter(el, window.__SCATTERS[id]);
           });
         }
       });

@@ -412,6 +412,7 @@ DERIVED_INDICATORS = {
     "payrolls_mom": {"deps": ["payrolls"], "desc": "非农新增 = 非农存量月环比差分"},
     "payrolls_3mma":{"deps": ["payrolls"], "desc": "非农新增 3 个月移动平均"},
     "cpi_yoy":      {"deps": ["cpi"], "desc": "CPI 同比（指数年化）"},
+    "core_cpi_yoy": {"deps": ["cpi_core"], "desc": "核心 CPI 同比（剔除食品能源）"},
     "pce_yoy":      {"deps": ["pcepi"], "desc": "PCE 同比"},
     "core_pce_yoy": {"deps": ["pce_core"], "desc": "核心 PCE 同比"},
     "cpi_pce_gap":  {"deps": ["cpi_yoy", "pce_yoy"], "desc": "CPI-PCE 剪刀差（正常 +0.3~0.5，倒挂为异常）"},
@@ -475,5 +476,13 @@ TOPIC_RULES = {
         "desc": "失业率 3MMA 高出过去 12 个月最低 3MMA ≥ 0.5pp 即触发",
         "threshold": 0.5,   # 百分点
         "framework": "Sahm Rule 由 Claudia Sahm 提出：当失业率的 3 个月移动平均，比过去 12 个月的最低 3 个月移动平均高出 0.50 个百分点时，经济正处于衰退的早期。它不预测衰退，而是实时确认衰退已经开始；历史上几乎每次衰退都触发，且误报极少。",
+    },
+    "phillips_curve": {
+        "name": "菲利普斯曲线（非线性）",
+        "indicator": "core_cpi_yoy",
+        "desc": "失业率低于约 4% 阈值时，核心 CPI 是否非线性加速上行",
+        "threshold_unrate": 4.0,   # 失业率 %，非线性拐点
+        "threshold_core": 3.0,     # 核心 CPI 同比 %，通胀加速警戒
+        "framework": "菲利普斯曲线的关键不是'有没有'，而是'非线性'：1995-2019 失业率从 10% 降到 3.5%，核心通胀纹丝不动（曲线'已死'）；2021-23 失业率跌破 4% 后核心 CPI 飙至 6%+（曲线'复活'）。失业率低于自然失业率（NAIRU，约 4%）时斜率陡峭，通胀对就业紧张高度敏感。",
     },
 }

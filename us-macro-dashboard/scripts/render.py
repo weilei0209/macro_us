@@ -567,6 +567,7 @@ TOPIC_DETAIL_CHARTS = {
         {"id": "td_sahm", "title": "萨姆规则（Sahm Rule）", "sub": "失业率 3MMA 高出 12 个月最低 3MMA，≥0.5pp 触发衰退预警", "series": ["sahm_rule"], "color": "#e5484d"},
         {"id": "td_sahm_unrate", "title": "失业率 U3", "sub": "萨姆规则的底层输入，家庭调查口径", "series": ["unrate"], "color": "#3b82f6"},
     ],
+    "phillips_curve": [],  # 菲利普斯用独立散点图，不走 ECharts 折线
 }
 
 
@@ -986,8 +987,8 @@ def render_topics(latest_data, series_data, reports):
     return "".join(H)
 
 
-def render_topic_detail(r, series_data, updated, beveridge_html=None):
-    """渲染单个专题的独立分析页面。beveridge 用独立 Canvas 页。"""
+def render_topic_detail(r, series_data, updated, beveridge_html=None, phillips_html=None):
+    """渲染单个专题的独立分析页面。beveridge 用独立 Canvas 页，phillips 用独立散点图。"""
     tid = r["id"]
     title = r["title"]
     sev = r.get("severity", "normal")
@@ -1049,6 +1050,9 @@ def render_topic_detail(r, series_data, updated, beveridge_html=None):
     if tid == "beveridge" and beveridge_html:
         H.append(section_head("📊", "贝弗里奇曲线（互动图）"))
         H.append(beveridge_html)
+    elif tid == "phillips_curve" and phillips_html:
+        H.append(section_head("📊", "菲利普斯曲线（散点图）"))
+        H.append(phillips_html)
     elif charts:
         H.append(section_head("📊", "数据图表"))
         topic_charts_data = {}
@@ -1102,6 +1106,103 @@ def render_about(latest_data, series_data, reports):
 
     H.append(page_foot())
     return "".join(H)
+
+
+def phillips_scatter_data(series_data):
+    """菲利普斯曲线散点数据：横轴=失业率%，纵轴=核心CPI同比%。
+    三个时代分色（1995-2019 平坦期 / 2021-2023 陡峭期 / 2024 至今回落期），剔除 2020 疫情异常，
+    最新数据点单独高亮。返回供 renderScatter 使用的 dict。"""
+    unrate = series_data.get("unrate", [])
+    core = series_data.get("cpi_core", [])
+    # 失业率：date -> value
+    umap = {p["date"]: p["value"] for p in unrate if p["value"] is not None}
+    # 核心 CPI 同比：对每个点算 12 个月前同比
+    core_pts = [p for p in core if p["value"] is not None]
+    core_pts.sort(key=lambda x: x["date"])
+    cmap = {p["date"]: p["value"] for p in core_pts}
+    core_dates = sorted(cmap.keys())
+
+    def seg(year):
+        if year <= 2019:
+            return "pre"
+        if year <= 2023:
+            return "tight"
+        return "now"
+
+    seg_data = {"pre": [], "tight": [], "now": []}
+    latest_pt = None
+    for d in core_dates:
+        y = int(d[:4])
+        if y < 1995:
+            continue
+        # 剔除 2020（疫情异常值，参考图口径）
+        if y == 2020:
+            continue
+        if d not in umap:
+            continue
+        # 核心 CPI 同比：12 个月前目标日期，取"<= 目标"的最近点（与 fetch_all 的 pct_change_yoy 口径一致）
+        mo = int(d[5:7])
+        target = f"{y-1:04d}-{mo:02d}-01"
+        best = None
+        for pd in core_dates:
+            if pd <= target:
+                best = pd
+            else:
+                break
+        if best is None or cmap.get(best, 0) == 0:
+            continue
+        yoy = (cmap[d] / cmap[best] - 1) * 100
+        u = umap[d]
+        pt = [round(u, 2), round(yoy, 2), d]
+        seg_data[seg(y)].append(pt)
+        latest_pt = pt
+
+    series = [
+        {"name": "1995–2019 平坦期", "color": "#6b7a90", "symbolSize": 7,
+         "data": seg_data["pre"]},
+        {"name": "2021–23 陡峭期", "color": "#e5484d", "symbolSize": 9,
+         "data": seg_data["tight"]},
+        {"name": "2024 至今 回落期", "color": "#3b82f6", "symbolSize": 9,
+         "data": seg_data["now"]},
+    ]
+    # 最新点高亮
+    if latest_pt:
+        series.append({"name": "最新数据点", "color": "#f5a623", "symbolSize": 16,
+                       "data": [latest_pt], "opacity": 1.0})
+    return {
+        "xName": "失业率 %",
+        "yName": "核心 CPI 同比 %",
+        "series": series,
+        "latest": latest_pt,
+    }
+
+
+def phillips_scatter_block(series_data):
+    """菲利普斯曲线散点图 HTML 块（ECharts scatter）。"""
+    data = phillips_scatter_data(series_data)
+    data_json = json.dumps(data, ensure_ascii=False)
+    latest = data.get("latest")
+    latest_txt = ""
+    if latest:
+        latest_txt = f'当前：失业率 {latest[0]}% · 核心 CPI 同比 {latest[1]}%'
+    return f'''<div class="chart-card" style="margin-bottom:14px">
+  <div class="c-title">菲利普斯曲线（非线性）</div>
+  <div class="c-sub">失业率 × 核心 CPI 同比 · 剔除 2020 疫情 · {latest_txt}</div>
+  <div class="c-meta">来源 BLS · 单位 % · 散点为月度数据，三时代分色展示曲线的"死亡与复活"</div>
+  <div class="chart-box" id="phillips_scatter" style="height:440px"></div>
+</div>
+<script>
+window.__SCATTERS = window.__SCATTERS || {{}};
+window.__SCATTERS["phillips_scatter"] = {data_json};
+</script>
+<script>
+(function(){{
+  var el = document.getElementById("phillips_scatter");
+  if(el && window.__SCATTERS && window.__SCATTERS["phillips_scatter"]){{
+    window.renderScatter(el, window.__SCATTERS["phillips_scatter"]);
+  }}
+}})();
+</script>'''
 
 
 def beveridge_canvas_block():
@@ -1412,11 +1513,14 @@ def render():
         tid = r.get("id")
         if not tid:
             continue
-        # 贝弗里奇用独立 Canvas 页（复用现有实现，暗色适配）
+        # 贝弗里奇用独立 Canvas 页；菲利普斯用独立散点图
         bev_html = None
         if tid == "beveridge":
             bev_html = beveridge_canvas_block()
-        content = render_topic_detail(r, series_data, updated, beveridge_html=bev_html)
+        phil_html = None
+        if tid == "phillips_curve":
+            phil_html = phillips_scatter_block(series_data)
+        content = render_topic_detail(r, series_data, updated, beveridge_html=bev_html, phillips_html=phil_html)
         with open(os.path.join(topics_dir, f"{tid}.html"), "w", encoding="utf-8") as f:
             f.write(content)
         print(f"  ✓ topics/{tid}.html  ({len(content)} 字节)")

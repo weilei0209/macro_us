@@ -243,10 +243,71 @@ def topic_sahm(series, derived, latest):
     }
 
 
+def topic_phillips(series, derived, latest):
+    """菲利普斯曲线（非线性）：低失业率是否触发核心 CPI 非线性加速上行。"""
+    core_yoy = derived.get("core_cpi_yoy")
+    unrate = latest_value(series.get("unrate", []))
+    if not core_yoy or not unrate:
+        return None
+    u = unrate["value"]
+    c = core_yoy["value"]
+    threshold_u = TOPIC_RULES["phillips_curve"]["threshold_unrate"]
+    threshold_c = TOPIC_RULES["phillips_curve"]["threshold_core"]
+
+    # 核心 CPI 同比 3 个月变化（判断是否在加速）
+    core_series = series.get("cpi_core", [])
+    pts = [p for p in core_series if p["value"] is not None]
+    pmap = {p["date"]: p["value"] for p in pts}
+    dates = sorted(pmap.keys())
+    c_now = pmap.get(dates[-1]) if dates else None
+    # 3 个月前同比
+    c_3m_ago = None
+    if len(dates) >= 4:
+        d_prev = dates[-4]
+        if d_prev in pmap and c_now:
+            y, m = int(d_prev[:4]), int(d_prev[5:7])
+            ty = y - 1
+            t = f"{ty:04d}-{m:02d}-01"
+            if t in pmap and pmap[t] != 0:
+                c_3m_ago = (pmap[d_prev] / pmap[t] - 1) * 100
+    # 当前同比（用 core_yoy 的 value 一致）
+    accelerating = (c_3m_ago is not None) and (c - c_3m_ago) > 0.2  # 3个月升 0.2pp 视为加速
+
+    below_threshold = u < threshold_u
+    above_core = c > threshold_c
+    # 触发条件：失业率低于阈值 且 核心CPI同比加速或高于警戒线
+    triggered = below_threshold and (accelerating or above_core)
+    # 严重度：触发时为 high；失业率接近阈值（< 4.5）且通胀抬头时为观察
+    severity = "high" if triggered else ("info" if u < 4.5 and c > 2.5 else "normal")
+
+    if triggered:
+        verdict = (f"⚠️ 当前失业率 {u}% 已低于 {threshold_u}% 的非线性拐点，且核心 CPI 同比 {c:.2f}%"
+                   + ("正在加速上行" if accelerating else "高于警戒线")
+                   + "——菲利普斯曲线进入陡峭段，通胀对就业紧张高度敏感，需警惕核心通胀二次抬头。")
+    elif below_threshold:
+        verdict = (f"失业率 {u}% 已低于 {threshold_u}% 拐点，但核心 CPI 同比仅 {c:.2f}%、"
+                   f"尚未加速（3 个月前 {c_3m_ago:.2f}%），曲线仍处平坦段，暂未触发非线性上行。")
+    else:
+        verdict = (f"失业率 {u}% 仍高于 {threshold_u}% 拐点，核心 CPI 同比 {c:.2f}%，"
+                   f"菲利普斯曲线处于平坦段，低失业率尚未转化为通胀压力。")
+
+    return {
+        "id": "phillips_curve",
+        "title": "菲利普斯曲线（非线性）",
+        "triggered": triggered,
+        "severity": severity,
+        "data": {"unrate": u, "core_cpi_yoy": round(c, 2),
+                 "threshold_u": threshold_u, "threshold_c": threshold_c},
+        "analysis": verdict,
+        "framework": TOPIC_RULES["phillips_curve"]["framework"],
+        "watch": "后续关注：失业率是否进一步跌破 4%、核心 CPI 同比 3 个月变化方向、工资增速（AHE/ECI）是否滞后加速",
+    }
+
+
 TOPIC_FUNCS = [
     topic_inflation_anchor, topic_labor_freeze, topic_beveridge, topic_qt_end,
     topic_technical_recession, topic_r_minus_g, topic_cpi_pce_inversion,
-    topic_sahm,
+    topic_sahm, topic_phillips,
 ]
 
 
