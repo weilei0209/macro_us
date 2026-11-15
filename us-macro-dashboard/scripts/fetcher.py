@@ -192,11 +192,11 @@ class CensusClient:
 # ---------------------------------------------------------------------------
 # 五、Zillow ZORI 抓取（新增租约租金的领先指标）
 # ---------------------------------------------------------------------------
-ZORI_URL = "https://files.zillowstatic.com/research/public_csvs/zori/Metro_zori_uc_sfrcondomfr_sm_month.csv"
+ZORI_URL = "https://files.zillowstatic.com/research/public_csvs/zori/Metro_zori_uc_sfrcondomfr_sm_sa_month.csv"
 
 def fetch_zillow_zori(region_name="United States"):
-    """从 Zillow 公开数据下载 ZORI（Zillow Observed Rent Index，观测挂牌租金），
-    返回美国全国月度序列 [{date, value}]（value 为美元/月，smoothed、未季调）。
+    """从 Zillow 公开数据下载 ZORI（Zillow Observed Rent Index，观测挂牌租金，季调），
+    返回美国全国月度序列 [{date, value}]（value 为美元/月，smoothed + seasonally adjusted）。
     ZORI 是新挂牌房源的挂牌租金，领先 CPI 租金（含续约）约 12 个月。"""
     req = urllib.request.Request(ZORI_URL, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=60) as r:

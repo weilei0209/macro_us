@@ -62,9 +62,9 @@ FRED_SERIES = {
     "cpi":          "CPIAUCSL",    # CPI 总
     "cpi_core":     "CPILFESL",    # 核心 CPI
     "cpi_median":   "MEDCPIM158SFRBCLE", # 中位 CPI
-    "core_goods_cpi":   "CUUR0000SACL1E", # 核心商品 CPI（剔除食品能源商品）
-    "core_services_cpi":"CUUR0000SASLE",  # 核心服务 CPI（剔除能源服务）
-    "cpi_rent":     "CUUR0000SEHA", # CPI 租金（主要居所租金，滞后指标）
+    "core_goods_cpi":   "CUSR0000SACL1E", # 核心商品 CPI（剔除食品能源商品，季调）
+    "core_services_cpi":"CUSR0000SASLE",  # 核心服务 CPI（剔除能源服务，季调）
+    "cpi_rent":     "CUSR0000SEHA", # CPI 租金（主要居所租金，季调）
     "pcepi":        "PCEPI",       # PCE 价格指数
     "pce_core":     "PCEPILFE",    # 核心 PCE
     "pce":          "PCE",         # PCE 名义支出
