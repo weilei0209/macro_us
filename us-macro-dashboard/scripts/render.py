@@ -246,7 +246,7 @@ def freq_rule_for_chart(chart):
         cid = chart["id"]
         if cid in ("chart_vu", "emp_vu", "td_vu"):
             sids = ["jolts_open"]  # 滞后最严重的那个决定"最新一期"的错位感
-        elif cid in ("chart_infl_yoy", "inf_yoy", "td_yoy"):
+        elif cid in ("chart_infl_yoy", "inf_yoy", "td_yoy", "inf_yoy_annual"):
             sids = ["cpi"]
     # 多序列且频率不一致时，标注混合频率说明
     freqs = []
@@ -411,6 +411,34 @@ def build_chart(series_data, chart):
             {"name": "新租约租金 ZORI 环比", "values": zori["values"], "color": "#f5a623"},
             {"name": "CPI 租金环比", "values": rent_aligned, "color": "#e5484d"},
         ]}
+    if cid == "inf_yoy_annual":
+        # 通胀页：CPI vs PCE 同比（含核心 CPI）
+        cpi = yoy_series(series_data.get("cpi", []))
+        pce = yoy_series(series_data.get("pcepi", []))
+        core = yoy_series(series_data.get("cpi_core", []))
+        return {"dates": cpi["dates"], "release_rule": rule, "series": [
+            {"name": "CPI 同比", "values": cpi["values"], "color": "#e5484d"},
+            {"name": "核心 CPI 同比", "values": core["values"], "color": "#f5a623"},
+            {"name": "PCE 同比", "values": pce["values"], "color": "#3b82f6"},
+        ]}
+    if cid == "inf_core_annual":
+        # 核心商品 vs 核心服务：同比（%）
+        goods = yoy_series(series_data.get("core_goods_cpi", []))
+        svcs = yoy_series(series_data.get("core_services_cpi", []))
+        return {"dates": goods["dates"], "release_rule": rule, "series": [
+            {"name": "核心商品 CPI 同比", "values": goods["values"], "color": "#3b82f6"},
+            {"name": "核心服务 CPI 同比", "values": svcs["values"], "color": "#e5484d"},
+        ]}
+    if cid == "inf_housing_annual":
+        # 住房通胀：ZORI vs CPI 租金，同比（%），以 ZORI 日期为基准对齐 CPI 租金
+        zori = yoy_series(series_data.get("zori", []))
+        rent = yoy_series(series_data.get("cpi_rent", []))
+        rent_aligned = align_series(zori["dates"],
+                                    [{"date": d, "value": v} for d, v in zip(rent["dates"], rent["values"])])
+        return {"dates": zori["dates"], "release_rule": rule, "series": [
+            {"name": "新租约租金 ZORI 同比", "values": zori["values"], "color": "#f5a623"},
+            {"name": "CPI 租金同比", "values": rent_aligned, "color": "#e5484d"},
+        ]}
     # ---- 就业页新增图表 ----
     if cid == "emp_diffusion":
         d = series_points(series_data.get("emp_diffusion", []))
@@ -486,8 +514,11 @@ THEME_CHARTS = {
     ],
     "inflation": [
         {"id": "inf_yoy", "title": "CPI vs PCE 环比", "sub": "两套口径的月度环比（MoM，季调），含核心 CPI，看边际通胀动能", "series": [], "color": "#e5484d"},
+        {"id": "inf_yoy_annual", "title": "CPI vs PCE 同比", "sub": "两套口径的同比，含核心 CPI，看通胀趋势水平", "series": [], "color": "#e5484d"},
         {"id": "inf_core", "title": "核心通胀环比：核心商品 vs 核心服务", "sub": "核心 CPI 拆分商品与服务两分项的月度环比，服务环比更黏", "series": ["core_goods_cpi", "core_services_cpi"], "color": "#e5484d"},
+        {"id": "inf_core_annual", "title": "核心通胀同比：核心商品 vs 核心服务", "sub": "核心 CPI 拆分商品与服务两分项的同比，服务是通胀粘性主因", "series": ["core_goods_cpi", "core_services_cpi"], "color": "#e5484d"},
         {"id": "inf_housing", "title": "住房通胀环比：新租约 vs CPI 租金", "sub": "Zillow 新租约租金（ZORI）领先 CPI 租金约 12 个月，看边际传导", "series": ["zori", "cpi_rent"], "color": "#e5484d"},
+        {"id": "inf_housing_annual", "title": "住房通胀同比：新租约 vs CPI 租金", "sub": "新租约租金（ZORI）领先 CPI 租金约 12 个月，看传导滞后", "series": ["zori", "cpi_rent"], "color": "#e5484d"},
         {"id": "inf_5y5y", "title": "5y5y 远期通胀补偿", "sub": "最严格的锚定指标", "series": ["fwd5y5y"], "color": "#f5a623"},
         {"id": "inf_bei", "title": "10Y 盈亏平衡通胀率", "sub": "市场定价的通胀预期", "series": ["bei10y"], "color": "#8b5cf6"},
     ],
@@ -765,9 +796,12 @@ def chart_meta(chart):
         "td_vu": "来源 BLS（JOLTS + CPS） · 单位 倍 · 岗位空缺 ÷ 失业人数",
         "chart_infl_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
         "inf_yoy": "来源 BLS / BEA · 单位 % · CPI、核心 CPI 与 PCE 月度环比（MoM，季调）对比",
+        "inf_yoy_annual": "来源 BLS / BEA · 单位 % · CPI、核心 CPI 与 PCE 同比对比",
         "td_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
         "inf_core": "来源 BLS · 单位 % · 核心商品=剔除食品能源商品；核心服务=剔除能源服务，月度环比（季调）",
+        "inf_core_annual": "来源 BLS · 单位 % · 核心商品=剔除食品能源商品；核心服务=剔除能源服务，两分项合计即核心 CPI，同比",
         "inf_housing": "来源 Zillow / BLS · 单位 % · ZORI 为新挂牌租金（领先），CPI 租金含续约（滞后约 12 个月），两线均月度环比（季调）",
+        "inf_housing_annual": "来源 Zillow / BLS · 单位 % · ZORI 为新挂牌租金（领先），CPI 租金含续约（滞后约 12 个月），两线均同比",
         # 就业页新增
         "emp_diffusion": "来源 BLS · 单位 % · 11 个主要行业环比上升占比（参考 PMI 扩散指数构造，3MMA）",
         "emp_cyclical": "来源 BLS · 单位 千人（月度新增） · 工业新增=制造+建筑+采矿环比增量，双轴对比非农新增的周期性",
