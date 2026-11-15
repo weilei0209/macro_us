@@ -110,6 +110,7 @@
         showSymbol: s.showSymbol === true,
         symbol: s.showSymbol === true ? 'circle' : 'none',
         symbolSize: big ? 7 : 5,
+        connectNulls: s.connectNulls === true,
         lineStyle:{width: big?2.5:2, color:s.color, type: dashed ? 'dashed' : 'solid'},
         itemStyle:{color:s.color},
         areaStyle: (i===0 && data.series.length===1) ? {color:s.color, opacity:0.15} : null,

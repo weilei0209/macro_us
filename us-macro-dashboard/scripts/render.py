@@ -399,7 +399,8 @@ def build_chart(series_data, chart):
         eci_aligned = align_series(dates, [{"date": d, "value": v} for d, v in zip(eci_yoy["dates"], eci_yoy["values"])])
         return {"dates": dates, "release_rule": "AHE 统计月数据 · ECI 统计季度数据 · 同比增速对比", "series": [
             {"name": "平均时薪 AHE 同比", "values": ahe_yoy["values"], "color": "#e5484d"},
-            {"name": "雇佣成本指数 ECI 同比", "values": eci_aligned, "color": "#8b5cf6"},
+            {"name": "雇佣成本指数 ECI 同比", "values": eci_aligned, "color": "#8b5cf6",
+             "showSymbol": True, "connectNulls": True},
         ]}
     names = {"us10y": "10Y", "us2y": "2Y", "tips10y": "r(实际利率)", "gdp_qoq": "g(实际增速)",
              "fwd5y5y": "5y5y", "on_rrp": "ON RRP", "bei10y": "BEI 10Y", "unrate": "失业率",
