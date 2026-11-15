@@ -1,0 +1,25 @@
+# ===== 依赖与虚拟环境 =====
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+
+# ===== WorkBuddy 内部数据（非项目内容，勿提交）=====
+.workbuddy/
+
+# ===== 看板项目：数据文件（每日变化/体积大，可重新生成）=====
+us-macro-dashboard/data/cache/
+us-macro-dashboard/data/series.json
+us-macro-dashboard/data/latest.json
+us-macro-dashboard/data/reports.json
+
+# ===== 看板项目：遗留的单页版（已被 site/ 多页面版取代）=====
+us-macro-dashboard/index.html
+
+# ===== 环境变量 / 密钥（API key 走环境变量，勿提交任何含密钥文件）=====
+.env
+.env.*
+*.key

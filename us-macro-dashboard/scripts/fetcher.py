@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+美国宏观数据看板 - 数据拉取层
+四个官方 API 客户端 + 本地缓存 + 发布日历驱动的精准增量更新。
+"""
+import os, json, time, datetime, urllib.request, urllib.parse
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CACHE_DIR = os.path.join(BASE_DIR, "data", "cache")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+os.makedirs(CACHE_DIR, exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# 环境变量读取 API key
+def _key(name):
+    v = os.environ.get(name, "").strip()
+    if not v:
+        raise RuntimeError(f"环境变量 {name} 未设置")
+    return v
+
+def _http_json(url, timeout=30, data=None, headers=None):
+    req = urllib.request.Request(url, data=data, headers=headers or {})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+# ---------------------------------------------------------------------------
+# 缓存工具
+# ---------------------------------------------------------------------------
+def cache_path(name):
+    return os.path.join(CACHE_DIR, f"{name}.json")
+
+def load_cache(name):
+    p = cache_path(name)
+    if os.path.exists(p):
+        try:
+            with open(p, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+    return None
+
+def save_cache(name, obj):
+    with open(cache_path(name), "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False)
+
+# ---------------------------------------------------------------------------
+# 一、FRED 客户端
+# ---------------------------------------------------------------------------
+class FredClient:
+    BASE = "https://api.stlouisfed.org/fred"
+    def __init__(self):
+        self.key = _key("FRED_API_KEY")
+
+    def _get(self, path, params):
+        params = dict(params)
+        params["api_key"] = self.key
+        params["file_type"] = "json"
+        url = f"{self.BASE}/{path}?{urllib.parse.urlencode(params)}"
+        return _http_json(url)
+
+    def series_observations(self, series_id, limit=None, desc=True):
+        """拉取序列观测值，返回正序（旧→新）[{date, value}]，value 为 float 或 None（. 缺失）。"""
+        params = {"series_id": series_id}
+        if desc:
+            params["sort_order"] = "desc"
+        if limit:
+            params["limit"] = str(limit)
+        d = self._get("series/observations", params)
+        out = []
+        for o in d.get("observations", []):
+            v = o.get("value")
+            try:
+                v = float(v) if v not in (".", "", None) else None
+            except ValueError:
+                v = None
+            out.append({"date": o.get("date"), "value": v})
+        # sort_order=desc 返回从新到旧，统一转成正序（旧→新）
+        if desc:
+            out.reverse()
+        return out
+
+    def series_info(self, series_id):
+        d = self._get("series", {"series_id": series_id})
+        s = d.get("seriess", [{}])
+        return s[0] if s else {}
+
+
+# ---------------------------------------------------------------------------
+# 二、BLS 客户端（v2 API）
+# ---------------------------------------------------------------------------
+class BlsClient:
+    URL = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+    def __init__(self):
+        self.key = _key("BLS_API_KEY")
+
+    def fetch(self, series_ids, start_year, end_year):
+        """拉取多个系列，返回 {series_id: [{year, period, periodName, value}]}。"""
+        body = json.dumps({
+            "seriesid": list(series_ids),
+            "startyear": str(start_year),
+            "endyear": str(end_year),
+            "registrationkey": self.key,
+        }).encode("utf-8")
+        d = _http_json(self.URL, data=body, headers={"Content-Type": "application/json"})
+        if d.get("status") != "REQUEST_SUCCEEDED":
+            raise RuntimeError(f"BLS 错误: {d.get('message')}")
+        out = {}
+        for s in d.get("Results", {}).get("series", []):
+            out[s["seriesID"]] = s.get("data", [])
+        return out
+
+
+# ---------------------------------------------------------------------------
+# 三、BEA 客户端
+# ---------------------------------------------------------------------------
+class BeaClient:
+    URL = "https://apps.bea.gov/api/data"
+    def __init__(self):
+        self.key = _key("BEA_API_KEY")
+
+    def get_data(self, dataset="NIPA", table=None, frequency="Q", year=None):
+        params = {
+            "UserID": self.key, "method": "GetData", "DataSetName": dataset,
+            "TableName": table, "Frequency": frequency,
+            "Year": str(year), "ResultFormat": "JSON",
+        }
+        url = f"{self.URL}?{urllib.parse.urlencode(params)}"
+        d = _http_json(url, timeout=40)
+        res = d.get("BEAAPI", {}).get("Results", {})
+        if isinstance(res, dict):
+            # 单个结果
+            data = res.get("Data", [])
+        else:
+            data = res[0].get("Data", []) if res else []
+        return data
+
+
+# ---------------------------------------------------------------------------
+# 四、Census 客户端
+# ---------------------------------------------------------------------------
+class CensusClient:
+    URL = "https://api.census.gov/data"
+    def __init__(self):
+        self.key = _key("CENSUS_API_KEY")
+
+    def get(self, dataset, get_vars, predicates=None):
+        params = {"get": ",".join(get_vars), "key": self.key}
+        if predicates:
+            params.update(predicates)
+        url = f"{self.URL}/{dataset}?{urllib.parse.urlencode(params)}"
+        return _http_json(url, timeout=40)
+
+
+# ---------------------------------------------------------------------------
+# 五、发布日历判定
+# ---------------------------------------------------------------------------
+def _nth_weekday(year, month, weekday, nth):
+    """返回某月第 nth 个 weekday（0=周一..6=周日）的日期。"""
+    d = datetime.date(year, month, 1)
+    count = 0
+    while d.month == month:
+        if d.weekday() == weekday:
+            count += 1
+            if count == nth:
+                return d
+        d += datetime.timedelta(days=1)
+    return None
+
+def due_today(freq, today=None):
+    """判断某频率的指标今天是否该拉取。返回 True/False。"""
+    today = today or datetime.date.today()
+    wd = today.weekday()  # 0=周一
+    if freq == "daily":
+        return wd < 5  # 仅工作日
+    if freq == "weekly":
+        return wd == 3  # 周四
+    if freq == "weekly_thu":
+        return wd == 3
+    if freq == "weekly_fri":
+        return wd == 4
+    if freq == "monthly_1st_fri":
+        return today == _nth_weekday(today.year, today.month, 4, 1)
+    if freq == "monthly_mid":
+        return 12 <= today.day <= 18
+    if freq == "monthly_end":
+        return today.day >= 25
+    if freq == "monthly_jolts":
+        # JOLTS 约在次月上旬公布，宽松判定为每月 5-10 日
+        return 5 <= today.day <= 10
+    if freq == "quarterly":
+        return today.month in (1, 4, 7, 10) and today.day >= 25
+    return False
+
+
+def which_indicators_due(calendar, today=None):
+    """根据发布日历，返回今天该拉取的指标名列表。"""
+    due = []
+    for ind, (api, freq) in calendar.items():
+        if due_today(freq, today):
+            due.append(ind)
+    return due
+
+
+# ---------------------------------------------------------------------------
+# 六、主拉取流程
+# ---------------------------------------------------------------------------
+def fetch_fred_series(series_ids, client=None):
+    client = client or FredClient()
+    result = {}
+    for sid in series_ids:
+        obs = client.series_observations(sid, limit=None)
+        result[sid] = obs
+    return result
+
+
+if __name__ == "__main__":
+    # 自测：打印今天该拉取的指标
+    import sys
+    sys.path.insert(0, os.path.join(BASE_DIR, "scripts"))
+    from indicators import RELEASE_CALENDAR
+    due = which_indicators_due(RELEASE_CALENDAR)
+    print(f"今天 {datetime.date.today()} 应拉取指标数: {len(due)}")
+    for d in due:
+        print("  -", d)

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>关于 · 美国宏观数据看板</title>
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/echarts.min.js"></script>
+<script src="assets/charts.js"></script>
+</head><body>
+<div class="nav"><div class="nav-inner">
+  <a href="index.html" class="logo"><span class="logo-dot"></span><h1>美国宏观数据看板</h1></a>
+  <div class="links"><a href="index.html">首页</a><a href="employment.html">就业</a><a href="inflation.html">通胀</a><a href="growth.html">增长</a><a href="fiscal.html">财政</a><a href="monetary.html">货币</a><a href="leading.html">领先</a><a href="topics.html">专题</a><a href="about.html" class="active">关于</a></div>
+  <div class="spacer"></div>
+  <div class="update">上次更新<br><b>2026-11-15</b></div>
+  <button class="theme-toggle" aria-label="切换主题" title="切换明暗主题">🌙</button>
+</div></div>
+<div class="wrap">
+<div class="pagehead"><div class="crumb">说明</div><h2>关于本看板</h2><div class="desc">数据口径速查与方法论来源，帮你快速理解每个指标"该怎么读"。</div></div><div class="section-head"><span class="icon">📖</span><h3>关键口径速查</h3><span class="line"></span></div><table class="dict-table"><thead><tr><th style="width:160px">口径</th><th>含义</th><th style="width:220px">用法/阈值</th></tr></thead><tbody><tr><td><span class="k">CPI vs PCE</span></td><td>拉氏 vs 链式；医疗 8% vs 17%、住房 36% vs 15%；美联储盯 PCE，市场盯 CPI</td><td>正常 CPI ≈ PCE + 0.3~0.5pp</td></tr><tr><td><span class="k">CES vs CPS</span></td><td>企业调查（岗位）vs 家庭调查（人数）；12 万家企业 vs 6 万户</td><td>新增看 CES，结构看 CPS</td></tr><tr><td><span class="k">NBER vs 技术性衰退</span></td><td>一揽子（就业/消费/工业生产）vs 连续两季负增长</td><td>1948 以来 10 次技术性衰退全为 NBER</td></tr><tr><td><span class="k">U3 vs U6</span></td><td>官方失业率 vs 广义（含不充分就业）</td><td>U6 更能反映就业市场松紧</td></tr><tr><td><span class="k">超级核心服务</span></td><td>剔除住房的核心服务，鲍威尔最警惕</td><td>通胀最顽固的分项</td></tr><tr><td><span class="k">PDFP</span></td><td>国内购买者最终销售，剔除净出口+库存</td><td>&#x27;核心 GDP&#x27;，看真实内需</td></tr><tr><td><span class="k">5y5y 远期补偿</span></td><td>5 年后的 5 年通胀预期，最严格锚定</td><td>显著抬升 = 市场不信任美联储</td></tr><tr><td><span class="k">V/U 比率</span></td><td>岗位空缺 / 失业人数</td><td>领先工资通胀约 2 季度</td></tr><tr><td><span class="k">r - g</span></td><td>实际利率 - 实际增速</td><td>r&lt;g 可增长化债</td></tr><tr><td><span class="k">统计月 vs 发布日</span></td><td>图表日期戳（如 2018-03）指统计参考期，非发布当天</td><td>数据通常在次月才发布，详见各指标卡标注</td></tr></tbody></table><div class="section-head"><span class="icon">🗓️</span><h3>日期语义说明</h3><span class="line"></span></div><div class="tip"><div class="tip-title">统计月份 ≠ 发布时间</div><div class="tip-body">所有月度/季度数据的日期戳代表<b>统计参考期</b>（数据描述的是哪一个月/季度的经济状况），而非数据发布的当天。例如"2018-03 失业率 4.0%"指<b>2018 年 3 月</b>的失业率为 4.0%，这一数据由 BLS 在 <b>2018 年 4 月首周周五</b>才发布。各指标卡与图表悬浮提示中均已标注对应的发布规则。滞后最明显的是 JOLTS（岗位空缺，滞后约 1~2 个月）与季度 GDP（次季首月月末才发布），阅读时请勿把日期戳误读为"最新可得数据的那一天"。</div></div><div class="section-head"><span class="icon">🎓</span><h3>方法论来源</h3><span class="line"></span></div><div class="tip"><div class="tip-title">📚 美国宏观数据训练营（腾讯会议 829/830）</div><div class="tip-body">829 主体（8h）+ 尾段（28min）：数据体系 / 就业 / 通胀 / 滞胀 / GDP；830 上午（约 2h53m）：财税立法 / 债务可持续性 / 化债路径；830 下午（约 4h）：货币政策框架 / FOMC / 消费 / 房地产 / PMI。</div></div><div class="tip"><div class="tip-title">🔧 技术实现</div><div class="tip-body">数据源 FRED / BLS / BEA / Census 四大官方 API；发布日历驱动的精准增量更新；专题规则引擎自动生成分析；ECharts 本地渲染。</div></div></div>
+<div class="footer">
+  美国宏观数据看板 · 数据来源 FRED / BLS / BEA / Census · 自动更新<br>
+  基于「美国宏观数据训练营（829/830）」方法论构建 · 仅供研究参考，不构成投资建议
+</div>
+<div id="chart-modal" class="chart-modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-panel">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <div id="modal-title" class="modal-title"></div>
+        <div id="modal-sub" class="modal-sub"></div>
+      </div>
+      <button class="modal-close" title="关闭（Esc）">✕</button>
+    </div>
+    <div class="modal-hint">🖱️ 滚轮缩放 · 拖动底部滑块选择时间范围 · 拖动图表平移 · Esc 关闭</div>
+    <div id="modal-chart" class="modal-chart"></div>
+  </div>
+</div>
+</body></html>

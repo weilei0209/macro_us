@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>贝弗里奇曲线（失业率 vs 岗位空缺率） · 美国宏观数据看板</title>
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/echarts.min.js"></script>
+<script src="../assets/charts.js"></script>
+</head><body>
+<div class="nav"><div class="nav-inner">
+  <a href="../index.html" class="logo"><span class="logo-dot"></span><h1>美国宏观数据看板</h1></a>
+  <div class="links">
+    <a href="../index.html">首页</a>
+    <a href="../employment.html">就业</a>
+    <a href="../inflation.html">通胀</a>
+    <a href="../growth.html">增长</a>
+    <a href="../fiscal.html">财政</a>
+    <a href="../monetary.html">货币</a>
+    <a href="../leading.html">领先</a>
+    <a href="../topics.html" class="active">专题</a>
+    <a href="../about.html">关于</a>
+  </div>
+  <div class="spacer"></div>
+  <div class="update">上次更新<br><b>2026-11-15</b></div>
+</div></div>
+<div class="wrap">
+<div class="pagehead"><div class="crumb"><a href="../topics.html" style="color:var(--cyan)">← 返回专题列表</a></div><h2>贝弗里奇曲线（失业率 vs 岗位空缺率）</h2><span class="t-badge info" style="font-size:12px;padding:3px 12px">观察</span></div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px"><span class="t-data">unrate = 4.10</span><span class="t-data">vacancy_rate = 4.41</span></div><div class="section-head"><span class="icon">📝</span><h3>分析结论</h3><span class="line"></span></div><div class="tip"><div class="tip-body" style="font-size:14px;line-height:1.9">当前失业率 4.1%，岗位空缺率约 4.41%。观察曲线位置：若空缺率快速下降而失业率未明显上升（曲线垂直下移），对应 2021-22 年美联储&#x27;软着陆&#x27;情景。</div></div><div class="section-head"><span class="icon">📌</span><h3>分析框架</h3><span class="line"></span></div><div class="tip"><div class="tip-body">曲线外移=匹配效率下降；垂直下降=空缺崩而失业率不动（2021-22 美联储获胜）。</div></div><div class="section-head"><span class="icon">📊</span><h3>贝弗里奇曲线（互动图）</h3><span class="line"></span></div><style>
+.bv-wrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
+.bv-canvas-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px 8px}
+.bv-canvas-card h4{font-size:14px;font-weight:700;margin-bottom:2px}
+.bv-canvas-card .sub{font-size:11.5px;color:var(--text3);margin-bottom:10px}
+.bv-canvas-card canvas{display:block;width:100%}
+#bc_canvas{height:440px}
+#ts_canvas{height:230px}
+.bv-side{display:flex;flex-direction:column;gap:12px}
+.bv-stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 15px}
+.bv-stat .k{font-size:11.5px;color:var(--text3)}
+.bv-stat .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.bv-stat .v small{font-size:12px;font-weight:500;color:var(--text2);margin-left:3px}
+.bv-stat .m{font-size:11.5px;color:var(--text2);margin-top:3px;line-height:1.5}
+.bv-stat.hero{border-left:3px solid var(--blue)}
+.bv-stat.warn{border-left:3px solid var(--red)}
+.bv-stat.warn .v{color:var(--red)}
+.bv-verdict{background:rgba(234,179,8,.06);border:1px solid rgba(234,179,8,.3);border-left:3px solid var(--gold);border-radius:12px;padding:13px 15px;font-size:12.5px;color:var(--text);line-height:1.65}
+.bv-verdict b{color:var(--gold)}
+.bv-verdict ul{margin:6px 0 0;padding-left:16px}
+.bv-verdict li{margin:3px 0}
+.bv-legend{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.bv-chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:3px 9px;cursor:pointer;user-select:none}
+.bv-chip i{width:8px;height:8px;border-radius:50%;display:block}
+.bv-chip.off{opacity:.38}
+@media(max-width:960px){.bv-wrap{grid-template-columns:1fr}}
+</style>
+<div class="bv-wrap">
+  <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+    <div class="bv-canvas-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div><h4>贝弗里奇曲线</h4><div class="sub">职位空缺率 × 失业率 · 虚线为 V/U=1 供需平衡线</div></div>
+        <div class="bv-legend" id="bv_legend"></div>
+      </div>
+      <canvas id="bc_canvas"></canvas>
+    </div>
+    <div class="bv-canvas-card">
+      <h4>空缺率与失业率的时间轨迹</h4>
+      <div class="sub">阴影区间：2020–21 疫情错配 / 2022–24 回落期</div>
+      <canvas id="ts_canvas"></canvas>
+    </div>
+  </div>
+  <div class="bv-side">
+    <div class="bv-stat hero">
+      <div class="k">最新月份 · <span id="bv_lm">—</span></div>
+      <div class="v"><span id="bv_vac">—</span><small>% 空缺率</small></div>
+      <div class="m">失业率 <b id="bv_un">—</b>%　·　V/U <b id="bv_ratio">—</b></div>
+    </div>
+    <div class="bv-stat warn">
+      <div class="k">距离 B-S「6%」门槛</div>
+      <div class="v"><span id="bv_gap">—</span><small>个百分点</small></div>
+      <div class="m">Blanchard-Summers 认为失业率需升至 6%+ 才能让通胀回到 2%。</div>
+    </div>
+    <div class="bv-stat">
+      <div class="k">自空缺率峰值（<span id="bv_pkd">—</span>）以来</div>
+      <div class="m">空缺率 <b id="bv_dv">—</b>，失业率 <b id="bv_du">—</b>，历经 <b id="bv_pkn">—</b> 个月，曲线近乎垂直回落。</div>
+    </div>
+    <div class="bv-stat">
+      <div class="k">曲线与 V/U=1 交点（自然失业率近似）</div>
+      <div class="v" id="bv_nat">—</div>
+      <div class="m">约 <b id="bv_natv">—</b>% 空缺率（<span id="bv_natd">—</span>）</div>
+    </div>
+    <div class="bv-verdict">
+      <b>判读</b>
+      <ul id="bv_verdict_list"></ul>
+    </div>
+  </div>
+</div>
+<script>
+window.BEVERIDGE_DATA = {"updated": "2026-11-15 09:16", "source": "FRED · JTSJOR (职位空缺率) / UNRATE (失业率), 均为季调", "stats": {"latest_period": "2026-09", "latest_u": 4.2, "latest_v": 4.5, "latest_ratio": 1.071, "peak_period": "2022-03", "peak_v": 7.5, "peak_u": 3.7, "peak_ratio": 2.027, "months_since_peak": 53, "dv_since_peak": -3.0, "du_since_peak": 0.5, "gap_to_6": 1.8, "nat_u_est": 4.2, "nat_v_est": 4.2, "nat_period": "2017-10", "pre2019_ratio": 1.23, "n_points": 309, "first_period": "2000-12"}, "points": [{"d": "2000-12-01", "u": 3.9, "v": 3.7, "r": 0.949}, {"d": "2001-01-01", "u": 4.2, "v": 3.8, "r": 0.905}, {"d": "2001-02-01", "u": 4.2, "v": 3.7, "r": 0.881}, {"d": "2001-03-01", "u": 4.3, "v": 3.5, "r": 0.814}, {"d": "2001-04-01", "u": 4.4, "v": 3.4, "r": 0.773}, {"d": "2001-05-01", "u": 4.3, "v": 3.2, "r": 0.744}, {"d": "2001-06-01", "u": 4.5, "v": 3.2, "r": 0.711}, {"d": "2001-07-01", "u": 4.6, "v": 3.3, "r": 0.717}, {"d": "2001-08-01", "u": 4.9, "v": 3.0, "r": 0.612}, {"d": "2001-09-01", "u": 5.0, "v": 3.0, "r": 0.6}, {"d": "2001-10-01", "u": 5.3, "v": 2.7, "r": 0.509}, {"d": "2001-11-01", "u": 5.5, "v": 2.8, "r": 0.509}, {"d": "2001-12-01", "u": 5.7, "v": 2.7, "r": 0.474}, {"d": "2002-01-01", "u": 5.7, "v": 2.7, "r": 0.474}, {"d": "2002-02-01", "u": 5.7, "v": 2.6, "r": 0.456}, {"d": "2002-03-01", "u": 5.7, "v": 2.7, "r": 0.474}, {"d": "2002-04-01", "u": 5.9, "v": 2.6, "r": 0.441}, {"d": "2002-05-01", "u": 5.8, "v": 2.6, "r": 0.448}, {"d": "2002-06-01", "u": 5.8, "v": 2.5, "r": 0.431}, {"d": "2002-07-01", "u": 5.8, "v": 2.5, "r": 0.431}, {"d": "2002-08-01", "u": 5.7, "v": 2.6, "r": 0.456}, {"d": "2002-09-01", "u": 5.7, "v": 2.5, "r": 0.439}, {"d": "2002-10-01", "u": 5.7, "v": 2.6, "r": 0.456}, {"d": "2002-11-01", "u": 5.9, "v": 2.6, "r": 0.441}, {"d": "2002-12-01", "u": 6.0, "v": 2.4, "r": 0.4}, {"d": "2003-01-01", "u": 5.8, "v": 2.6, "r": 0.448}, {"d": "2003-02-01", "u": 5.9, "v": 2.4, "r": 0.407}, {"d": "2003-03-01", "u": 5.9, "v": 2.3, "r": 0.39}, {"d": "2003-04-01", "u": 6.0, "v": 2.3, "r": 0.383}, {"d": "2003-05-01", "u": 6.1, "v": 2.5, "r": 0.41}, {"d": "2003-06-01", "u": 6.3, "v": 2.5, "r": 0.397}, {"d": "2003-07-01", "u": 6.2, "v": 2.2, "r": 0.355}, {"d": "2003-08-01", "u": 6.1, "v": 2.4, "r": 0.393}, {"d": "2003-09-01", "u": 6.1, "v": 2.3, "r": 0.377}, {"d": "2003-10-01", "u": 6.0, "v": 2.5, "r": 0.417}, {"d": "2003-11-01", "u": 5.8, "v": 2.5, "r": 0.431}, {"d": "2003-12-01", "u": 5.7, "v": 2.5, "r": 0.439}, {"d": "2004-01-01", "u": 5.7, "v": 2.6, "r": 0.456}, {"d": "2004-02-01", "u": 5.6, "v": 2.6, "r": 0.464}, {"d": "2004-03-01", "u": 5.8, "v": 2.6, "r": 0.448}, {"d": "2004-04-01", "u": 5.6, "v": 2.6, "r": 0.464}, {"d": "2004-05-01", "u": 5.6, "v": 2.7, "r": 0.482}, {"d": "2004-06-01", "u": 5.6, "v": 2.5, "r": 0.446}, {"d": "2004-07-01", "u": 5.5, "v": 2.8, "r": 0.509}, {"d": "2004-08-01", "u": 5.4, "v": 2.6, "r": 0.481}, {"d": "2004-09-01", "u": 5.4, "v": 2.8, "r": 0.519}, {"d": "2004-10-01", "u": 5.5, "v": 2.9, "r": 0.527}, {"d": "2004-11-01", "u": 5.4, "v": 2.6, "r": 0.481}, {"d": "2004-12-01", "u": 5.4, "v": 3.0, "r": 0.556}, {"d": "2005-01-01", "u": 5.3, "v": 2.8, "r": 0.528}, {"d": "2005-02-01", "u": 5.4, "v": 2.9, "r": 0.537}, {"d": "2005-03-01", "u": 5.2, "v": 2.9, "r": 0.558}, {"d": "2005-04-01", "u": 5.2, "v": 3.0, "r": 0.577}, {"d": "2005-05-01", "u": 5.1, "v": 2.8, "r": 0.549}, {"d": "2005-06-01", "u": 5.0, "v": 2.9, "r": 0.58}, {"d": "2005-07-01", "u": 5.0, "v": 3.1, "r": 0.62}, {"d": "2005-08-01", "u": 4.9, "v": 3.0, "r": 0.612}, {"d": "2005-09-01", "u": 5.0, "v": 3.1, "r": 0.62}, {"d": "2005-10-01", "u": 5.0, "v": 3.0, "r": 0.6}, {"d": "2005-11-01", "u": 5.0, "v": 3.1, "r": 0.62}, {"d": "2005-12-01", "u": 4.9, "v": 3.1, "r": 0.633}, {"d": "2006-01-01", "u": 4.7, "v": 3.1, "r": 0.66}, {"d": "2006-02-01", "u": 4.8, "v": 3.1, "r": 0.646}, {"d": "2006-03-01", "u": 4.7, "v": 3.4, "r": 0.723}, {"d": "2006-04-01", "u": 4.7, "v": 3.4, "r": 0.723}, {"d": "2006-05-01", "u": 4.6, "v": 3.2, "r": 0.696}, {"d": "2006-06-01", "u": 4.6, "v": 3.3, "r": 0.717}, {"d": "2006-07-01", "u": 4.7, "v": 3.1, "r": 0.66}, {"d": "2006-08-01", "u": 4.7, "v": 3.3, "r": 0.702}, {"d": "2006-09-01", "u": 4.5, "v": 3.3, "r": 0.733}, {"d": "2006-10-01", "u": 4.4, "v": 3.2, "r": 0.727}, {"d": "2006-11-01", "u": 4.5, "v": 3.3, "r": 0.733}, {"d": "2006-12-01", "u": 4.4, "v": 3.3, "r": 0.75}, {"d": "2007-01-01", "u": 4.6, "v": 3.3, "r": 0.717}, {"d": "2007-02-01", "u": 4.5, "v": 3.3, "r": 0.733}, {"d": "2007-03-01", "u": 4.4, "v": 3.5, "r": 0.795}, {"d": "2007-04-01", "u": 4.5, "v": 3.3, "r": 0.733}, {"d": "2007-05-01", "u": 4.4, "v": 3.3, "r": 0.75}, {"d": "2007-06-01", "u": 4.6, "v": 3.4, "r": 0.739}, {"d": "2007-07-01", "u": 4.7, "v": 3.2, "r": 0.681}, {"d": "2007-08-01", "u": 4.6, "v": 3.2, "r": 0.696}, {"d": "2007-09-01", "u": 4.7, "v": 3.3, "r": 0.702}, {"d": "2007-10-01", "u": 4.7, "v": 3.2, "r": 0.681}, {"d": "2007-11-01", "u": 4.7, "v": 3.3, "r": 0.702}, {"d": "2007-12-01", "u": 5.0, "v": 3.2, "r": 0.64}, {"d": "2008-01-01", "u": 5.0, "v": 3.2, "r": 0.64}, {"d": "2008-02-01", "u": 4.9, "v": 3.0, "r": 0.612}, {"d": "2008-03-01", "u": 5.1, "v": 3.0, "r": 0.588}, {"d": "2008-04-01", "u": 5.0, "v": 2.8, "r": 0.56}, {"d": "2008-05-01", "u": 5.4, "v": 3.0, "r": 0.556}, {"d": "2008-06-01", "u": 5.6, "v": 2.7, "r": 0.482}, {"d": "2008-07-01", "u": 5.8, "v": 2.7, "r": 0.466}, {"d": "2008-08-01", "u": 6.1, "v": 2.6, "r": 0.426}, {"d": "2008-09-01", "u": 6.1, "v": 2.3, "r": 0.377}, {"d": "2008-10-01", "u": 6.5, "v": 2.4, "r": 0.369}, {"d": "2008-11-01", "u": 6.8, "v": 2.3, "r": 0.338}, {"d": "2008-12-01", "u": 7.3, "v": 2.3, "r": 0.315}, {"d": "2009-01-01", "u": 7.8, "v": 2.0, "r": 0.256}, {"d": "2009-02-01", "u": 8.3, "v": 2.1, "r": 0.253}, {"d": "2009-03-01", "u": 8.7, "v": 1.9, "r": 0.218}, {"d": "2009-04-01", "u": 9.0, "v": 1.7, "r": 0.189}, {"d": "2009-05-01", "u": 9.4, "v": 1.9, "r": 0.202}, {"d": "2009-06-01", "u": 9.5, "v": 1.9, "r": 0.2}, {"d": "2009-07-01", "u": 9.5, "v": 1.7, "r": 0.179}, {"d": "2009-08-01", "u": 9.6, "v": 1.8, "r": 0.188}, {"d": "2009-09-01", "u": 9.8, "v": 1.9, "r": 0.194}, {"d": "2009-10-01", "u": 10.0, "v": 1.8, "r": 0.18}, {"d": "2009-11-01", "u": 9.9, "v": 1.9, "r": 0.192}, {"d": "2009-12-01", "u": 9.9, "v": 1.9, "r": 0.192}, {"d": "2010-01-01", "u": 9.8, "v": 2.1, "r": 0.214}, {"d": "2010-02-01", "u": 9.8, "v": 2.0, "r": 0.204}, {"d": "2010-03-01", "u": 9.9, "v": 2.0, "r": 0.202}, {"d": "2010-04-01", "u": 9.9, "v": 2.4, "r": 0.242}, {"d": "2010-05-01", "u": 9.6, "v": 2.2, "r": 0.229}, {"d": "2010-06-01", "u": 9.4, "v": 2.1, "r": 0.223}, {"d": "2010-07-01", "u": 9.4, "v": 2.3, "r": 0.245}, {"d": "2010-08-01", "u": 9.5, "v": 2.2, "r": 0.232}, {"d": "2010-09-01", "u": 9.5, "v": 2.2, "r": 0.232}, {"d": "2010-10-01", "u": 9.4, "v": 2.4, "r": 0.255}, {"d": "2010-11-01", "u": 9.8, "v": 2.4, "r": 0.245}, {"d": "2010-12-01", "u": 9.3, "v": 2.3, "r": 0.247}, {"d": "2011-01-01", "u": 9.1, "v": 2.3, "r": 0.253}, {"d": "2011-02-01", "u": 9.0, "v": 2.4, "r": 0.267}, {"d": "2011-03-01", "u": 9.0, "v": 2.4, "r": 0.267}, {"d": "2011-04-01", "u": 9.1, "v": 2.4, "r": 0.264}, {"d": "2011-05-01", "u": 9.0, "v": 2.4, "r": 0.267}, {"d": "2011-06-01", "u": 9.1, "v": 2.6, "r": 0.286}, {"d": "2011-07-01", "u": 9.0, "v": 2.7, "r": 0.3}, {"d": "2011-08-01", "u": 9.0, "v": 2.5, "r": 0.278}, {"d": "2011-09-01", "u": 9.0, "v": 2.8, "r": 0.311}, {"d": "2011-10-01", "u": 8.8, "v": 2.7, "r": 0.307}, {"d": "2011-11-01", "u": 8.6, "v": 2.6, "r": 0.302}, {"d": "2011-12-01", "u": 8.5, "v": 2.8, "r": 0.329}, {"d": "2012-01-01", "u": 8.3, "v": 2.8, "r": 0.337}, {"d": "2012-02-01", "u": 8.3, "v": 2.6, "r": 0.313}, {"d": "2012-03-01", "u": 8.2, "v": 2.9, "r": 0.354}, {"d": "2012-04-01", "u": 8.2, "v": 2.8, "r": 0.341}, {"d": "2012-05-01", "u": 8.2, "v": 2.8, "r": 0.341}, {"d": "2012-06-01", "u": 8.2, "v": 2.8, "r": 0.341}, {"d": "2012-07-01", "u": 8.2, "v": 2.7, "r": 0.329}, {"d": "2012-08-01", "u": 8.1, "v": 2.8, "r": 0.346}, {"d": "2012-09-01", "u": 7.8, "v": 2.8, "r": 0.359}, {"d": "2012-10-01", "u": 7.8, "v": 2.7, "r": 0.346}, {"d": "2012-11-01", "u": 7.7, "v": 2.8, "r": 0.364}, {"d": "2012-12-01", "u": 7.9, "v": 2.9, "r": 0.367}, {"d": "2013-01-01", "u": 8.0, "v": 2.8, "r": 0.35}, {"d": "2013-02-01", "u": 7.7, "v": 2.9, "r": 0.377}, {"d": "2013-03-01", "u": 7.5, "v": 2.9, "r": 0.387}, {"d": "2013-04-01", "u": 7.6, "v": 2.9, "r": 0.382}, {"d": "2013-05-01", "u": 7.5, "v": 3.0, "r": 0.4}, {"d": "2013-06-01", "u": 7.5, "v": 3.0, "r": 0.4}, {"d": "2013-07-01", "u": 7.3, "v": 2.8, "r": 0.384}, {"d": "2013-08-01", "u": 7.2, "v": 2.9, "r": 0.403}, {"d": "2013-09-01", "u": 7.2, "v": 2.9, "r": 0.403}, {"d": "2013-10-01", "u": 7.2, "v": 3.0, "r": 0.417}, {"d": "2013-11-01", "u": 6.9, "v": 2.9, "r": 0.42}, {"d": "2013-12-01", "u": 6.7, "v": 2.9, "r": 0.433}, {"d": "2014-01-01", "u": 6.6, "v": 2.9, "r": 0.439}, {"d": "2014-02-01", "u": 6.7, "v": 3.1, "r": 0.463}, {"d": "2014-03-01", "u": 6.7, "v": 3.1, "r": 0.463}, {"d": "2014-04-01", "u": 6.2, "v": 3.2, "r": 0.516}, {"d": "2014-05-01", "u": 6.3, "v": 3.3, "r": 0.524}, {"d": "2014-06-01", "u": 6.1, "v": 3.5, "r": 0.574}, {"d": "2014-07-01", "u": 6.2, "v": 3.4, "r": 0.548}, {"d": "2014-08-01", "u": 6.1, "v": 3.7, "r": 0.607}, {"d": "2014-09-01", "u": 5.9, "v": 3.4, "r": 0.576}, {"d": "2014-10-01", "u": 5.7, "v": 3.5, "r": 0.614}, {"d": "2014-11-01", "u": 5.8, "v": 3.3, "r": 0.569}, {"d": "2014-12-01", "u": 5.6, "v": 3.5, "r": 0.625}, {"d": "2015-01-01", "u": 5.7, "v": 3.7, "r": 0.649}, {"d": "2015-02-01", "u": 5.5, "v": 3.7, "r": 0.673}, {"d": "2015-03-01", "u": 5.4, "v": 3.6, "r": 0.667}, {"d": "2015-04-01", "u": 5.4, "v": 3.8, "r": 0.704}, {"d": "2015-05-01", "u": 5.6, "v": 3.8, "r": 0.679}, {"d": "2015-06-01", "u": 5.3, "v": 3.6, "r": 0.679}, {"d": "2015-07-01", "u": 5.2, "v": 4.1, "r": 0.788}, {"d": "2015-08-01", "u": 5.1, "v": 3.7, "r": 0.725}, {"d": "2015-09-01", "u": 5.0, "v": 3.7, "r": 0.74}, {"d": "2015-10-01", "u": 5.0, "v": 3.9, "r": 0.78}, {"d": "2015-11-01", "u": 5.1, "v": 3.8, "r": 0.745}, {"d": "2015-12-01", "u": 5.0, "v": 3.9, "r": 0.78}, {"d": "2016-01-01", "u": 4.8, "v": 4.0, "r": 0.833}, {"d": "2016-02-01", "u": 4.9, "v": 3.9, "r": 0.796}, {"d": "2016-03-01", "u": 5.0, "v": 4.1, "r": 0.82}, {"d": "2016-04-01", "u": 5.1, "v": 3.9, "r": 0.765}, {"d": "2016-05-01", "u": 4.8, "v": 3.9, "r": 0.812}, {"d": "2016-06-01", "u": 4.9, "v": 3.8, "r": 0.776}, {"d": "2016-07-01", "u": 4.8, "v": 4.0, "r": 0.833}, {"d": "2016-08-01", "u": 4.9, "v": 3.8, "r": 0.776}, {"d": "2016-09-01", "u": 5.0, "v": 3.9, "r": 0.78}, {"d": "2016-10-01", "u": 4.9, "v": 3.7, "r": 0.755}, {"d": "2016-11-01", "u": 4.7, "v": 4.0, "r": 0.851}, {"d": "2016-12-01", "u": 4.7, "v": 3.9, "r": 0.83}, {"d": "2017-01-01", "u": 4.7, "v": 3.7, "r": 0.787}, {"d": "2017-02-01", "u": 4.6, "v": 3.9, "r": 0.848}, {"d": "2017-03-01", "u": 4.4, "v": 3.8, "r": 0.864}, {"d": "2017-04-01", "u": 4.4, "v": 4.0, "r": 0.909}, {"d": "2017-05-01", "u": 4.4, "v": 3.8, "r": 0.864}, {"d": "2017-06-01", "u": 4.3, "v": 4.1, "r": 0.953}, {"d": "2017-07-01", "u": 4.3, "v": 4.1, "r": 0.953}, {"d": "2017-08-01", "u": 4.4, "v": 4.1, "r": 0.932}, {"d": "2017-09-01", "u": 4.3, "v": 4.1, "r": 0.953}, {"d": "2017-10-01", "u": 4.2, "v": 4.2, "r": 1.0}, {"d": "2017-11-01", "u": 4.2, "v": 4.1, "r": 0.976}, {"d": "2017-12-01", "u": 4.1, "v": 4.1, "r": 1.0}, {"d": "2018-01-01", "u": 4.0, "v": 4.3, "r": 1.075}, {"d": "2018-02-01", "u": 4.1, "v": 4.2, "r": 1.024}, {"d": "2018-03-01", "u": 4.0, "v": 4.4, "r": 1.1}, {"d": "2018-04-01", "u": 4.0, "v": 4.4, "r": 1.1}, {"d": "2018-05-01", "u": 3.8, "v": 4.5, "r": 1.184}, {"d": "2018-06-01", "u": 4.0, "v": 4.6, "r": 1.15}, {"d": "2018-07-01", "u": 3.8, "v": 4.6, "r": 1.211}, {"d": "2018-08-01", "u": 3.8, "v": 4.6, "r": 1.211}, {"d": "2018-09-01", "u": 3.7, "v": 4.7, "r": 1.27}, {"d": "2018-10-01", "u": 3.8, "v": 4.7, "r": 1.237}, {"d": "2018-11-01", "u": 3.8, "v": 4.8, "r": 1.263}, {"d": "2018-12-01", "u": 3.9, "v": 4.8, "r": 1.231}, {"d": "2019-01-01", "u": 4.0, "v": 4.8, "r": 1.2}, {"d": "2019-02-01", "u": 3.8, "v": 4.5, "r": 1.184}, {"d": "2019-03-01", "u": 3.8, "v": 4.6, "r": 1.211}, {"d": "2019-04-01", "u": 3.7, "v": 4.6, "r": 1.243}, {"d": "2019-05-01", "u": 3.6, "v": 4.6, "r": 1.278}, {"d": "2019-06-01", "u": 3.6, "v": 4.6, "r": 1.278}, {"d": "2019-07-01", "u": 3.7, "v": 4.5, "r": 1.216}, {"d": "2019-08-01", "u": 3.6, "v": 4.5, "r": 1.25}, {"d": "2019-09-01", "u": 3.5, "v": 4.5, "r": 1.286}, {"d": "2019-10-01", "u": 3.6, "v": 4.6, "r": 1.278}, {"d": "2019-11-01", "u": 3.6, "v": 4.3, "r": 1.194}, {"d": "2019-12-01", "u": 3.6, "v": 4.2, "r": 1.167}, {"d": "2020-01-01", "u": 3.6, "v": 4.5, "r": 1.25}, {"d": "2020-02-01", "u": 3.5, "v": 4.4, "r": 1.257}, {"d": "2020-03-01", "u": 4.4, "v": 3.8, "r": 0.864}, {"d": "2020-04-01", "u": 14.8, "v": 3.4, "r": 0.23}, {"d": "2020-05-01", "u": 13.2, "v": 4.0, "r": 0.303}, {"d": "2020-06-01", "u": 11.0, "v": 4.3, "r": 0.391}, {"d": "2020-07-01", "u": 10.2, "v": 4.5, "r": 0.441}, {"d": "2020-08-01", "u": 8.4, "v": 4.4, "r": 0.524}, {"d": "2020-09-01", "u": 7.8, "v": 4.4, "r": 0.564}, {"d": "2020-10-01", "u": 6.9, "v": 4.6, "r": 0.667}, {"d": "2020-11-01", "u": 6.7, "v": 4.6, "r": 0.687}, {"d": "2020-12-01", "u": 6.7, "v": 4.5, "r": 0.672}, {"d": "2021-01-01", "u": 6.4, "v": 4.8, "r": 0.75}, {"d": "2021-02-01", "u": 6.2, "v": 5.2, "r": 0.839}, {"d": "2021-03-01", "u": 6.1, "v": 5.6, "r": 0.918}, {"d": "2021-04-01", "u": 6.1, "v": 6.1, "r": 1.0}, {"d": "2021-05-01", "u": 5.8, "v": 6.4, "r": 1.103}, {"d": "2021-06-01", "u": 5.9, "v": 6.6, "r": 1.119}, {"d": "2021-07-01", "u": 5.4, "v": 7.0, "r": 1.296}, {"d": "2021-08-01", "u": 5.1, "v": 6.9, "r": 1.353}, {"d": "2021-09-01", "u": 4.7, "v": 6.8, "r": 1.447}, {"d": "2021-10-01", "u": 4.5, "v": 7.0, "r": 1.556}, {"d": "2021-11-01", "u": 4.1, "v": 7.0, "r": 1.707}, {"d": "2021-12-01", "u": 3.9, "v": 7.1, "r": 1.821}, {"d": "2022-01-01", "u": 4.0, "v": 7.0, "r": 1.75}, {"d": "2022-02-01", "u": 3.9, "v": 7.2, "r": 1.846}, {"d": "2022-03-01", "u": 3.7, "v": 7.5, "r": 2.027}, {"d": "2022-04-01", "u": 3.7, "v": 7.3, "r": 1.973}, {"d": "2022-05-01", "u": 3.6, "v": 7.1, "r": 1.972}, {"d": "2022-06-01", "u": 3.6, "v": 6.9, "r": 1.917}, {"d": "2022-07-01", "u": 3.5, "v": 7.0, "r": 2.0}, {"d": "2022-08-01", "u": 3.6, "v": 6.2, "r": 1.722}, {"d": "2022-09-01", "u": 3.5, "v": 6.6, "r": 1.886}, {"d": "2022-10-01", "u": 3.6, "v": 6.4, "r": 1.778}, {"d": "2022-11-01", "u": 3.6, "v": 6.4, "r": 1.778}, {"d": "2022-12-01", "u": 3.5, "v": 6.6, "r": 1.886}, {"d": "2023-01-01", "u": 3.5, "v": 6.2, "r": 1.771}, {"d": "2023-02-01", "u": 3.6, "v": 6.0, "r": 1.667}, {"d": "2023-03-01", "u": 3.5, "v": 5.9, "r": 1.686}, {"d": "2023-04-01", "u": 3.4, "v": 6.0, "r": 1.765}, {"d": "2023-05-01", "u": 3.6, "v": 5.7, "r": 1.583}, {"d": "2023-06-01", "u": 3.6, "v": 5.6, "r": 1.556}, {"d": "2023-07-01", "u": 3.5, "v": 5.3, "r": 1.514}, {"d": "2023-08-01", "u": 3.7, "v": 5.6, "r": 1.514}, {"d": "2023-09-01", "u": 3.7, "v": 5.6, "r": 1.514}, {"d": "2023-10-01", "u": 3.9, "v": 5.2, "r": 1.333}, {"d": "2023-11-01", "u": 3.7, "v": 5.2, "r": 1.405}, {"d": "2023-12-01", "u": 3.8, "v": 5.2, "r": 1.368}, {"d": "2024-01-01", "u": 3.7, "v": 5.1, "r": 1.378}, {"d": "2024-02-01", "u": 3.9, "v": 5.1, "r": 1.308}, {"d": "2024-03-01", "u": 3.9, "v": 5.0, "r": 1.282}, {"d": "2024-04-01", "u": 3.9, "v": 4.6, "r": 1.179}, {"d": "2024-05-01", "u": 3.9, "v": 4.7, "r": 1.205}, {"d": "2024-06-01", "u": 4.1, "v": 4.5, "r": 1.098}, {"d": "2024-07-01", "u": 4.2, "v": 4.5, "r": 1.071}, {"d": "2024-08-01", "u": 4.2, "v": 4.6, "r": 1.095}, {"d": "2024-09-01", "u": 4.1, "v": 4.2, "r": 1.024}, {"d": "2024-10-01", "u": 4.1, "v": 4.5, "r": 1.098}, {"d": "2024-11-01", "u": 4.2, "v": 4.6, "r": 1.095}, {"d": "2024-12-01", "u": 4.1, "v": 4.4, "r": 1.073}, {"d": "2025-01-01", "u": 4.0, "v": 4.5, "r": 1.125}, {"d": "2025-02-01", "u": 4.2, "v": 4.4, "r": 1.048}, {"d": "2025-03-01", "u": 4.2, "v": 4.2, "r": 1.0}, {"d": "2025-04-01", "u": 4.2, "v": 4.3, "r": 1.024}, {"d": "2025-05-01", "u": 4.3, "v": 4.4, "r": 1.023}, {"d": "2025-06-01", "u": 4.1, "v": 4.3, "r": 1.049}, {"d": "2025-07-01", "u": 4.3, "v": 4.3, "r": 1.0}, {"d": "2025-08-01", "u": 4.3, "v": 4.2, "r": 0.977}, {"d": "2025-09-01", "u": 4.4, "v": 4.3, "r": 0.977}, {"d": "2025-11-01", "u": 4.5, "v": 4.1, "r": 0.911}, {"d": "2025-12-01", "u": 4.4, "v": 4.0, "r": 0.909}, {"d": "2026-01-01", "u": 4.3, "v": 4.4, "r": 1.023}, {"d": "2026-02-01", "u": 4.4, "v": 4.2, "r": 0.955}, {"d": "2026-03-01", "u": 4.3, "v": 4.2, "r": 0.977}, {"d": "2026-04-01", "u": 4.3, "v": 4.6, "r": 1.07}, {"d": "2026-05-01", "u": 4.3, "v": 4.5, "r": 1.047}, {"d": "2026-06-01", "u": 4.2, "v": 4.3, "r": 1.024}, {"d": "2026-07-01", "u": 4.1, "v": 4.4, "r": 1.073}, {"d": "2026-08-01", "u": 4.1, "v": 4.3, "r": 1.049}, {"d": "2026-09-01", "u": 4.2, "v": 4.5, "r": 1.071}]};
+</script>
+<script>
+(function(){
+  "use strict";
+  var D = window.BEVERIDGE_DATA;
+  if(!D) return;
+  var P = D.points, S = D.stats;
+  var SEG = [
+    {k:"pre",   label:"2001–19",             from:"2000-01", to:"2019-12", color:"#6b7a90", r:2.2, lw:1.1},
+    {k:"covid", label:"2020–21 疫情错配",    from:"2020-01", to:"2021-12", color:"#f5a623", r:3.0, lw:1.7},
+    {k:"tight", label:"2022–24 软着陆(垂直)",from:"2022-01", to:"2024-12", color:"#e5484d", r:3.0, lw:1.7},
+    {k:"now",   label:"2025– 至今",          from:"2025-01", to:"9999-12", color:"#3b82f6", r:3.3, lw:1.9}
+  ];
+  var segOf = function(d){ var m=d.slice(0,7); for(var i=0;i<SEG.length;i++){ if(m>=SEG[i].from && m<=SEG[i].to) return SEG[i]; } return SEG[0]; };
+  P.forEach(function(p){ p.s = segOf(p.d); });
+  var hidden = {};
+  var fmt1 = function(x){ return (Math.round(x*10)/10).toFixed(1); };
+  var fmt2 = function(x){ return (Math.round(x*100)/100).toFixed(2); };
+  var sgn = function(x){ return (x>0?"+":"")+fmt1(x); };
+  var ym = function(d){ return d.slice(0,7).replace("-","年")+"月"; };
+  var ymS = function(d){ return d.slice(0,7); };
+
+  document.getElementById("bv_lm").textContent = ymS(S.latest_period+"-01");
+  document.getElementById("bv_vac").textContent = fmt1(S.latest_v);
+  document.getElementById("bv_un").textContent = fmt1(S.latest_u);
+  document.getElementById("bv_ratio").textContent = fmt2(S.latest_ratio);
+  document.getElementById("bv_gap").textContent = (S.gap_to_6>0?fmt1(S.gap_to_6):"0");
+  document.getElementById("bv_pkd").textContent = ymS(S.peak_period+"-01");
+  document.getElementById("bv_dv").textContent = sgn(S.dv_since_peak)+"pct";
+  document.getElementById("bv_dv").style.color = "#2ea043";
+  document.getElementById("bv_du").textContent = sgn(S.du_since_peak)+"pct";
+  document.getElementById("bv_du").style.color = "#e5484d";
+  document.getElementById("bv_pkn").textContent = S.months_since_peak;
+  document.getElementById("bv_nat").innerHTML = fmt1(S.nat_u_est)+"<small>% 失业率</small>";
+  document.getElementById("bv_natd").textContent = ymS(S.nat_period+"-01");
+  document.getElementById("bv_natv").textContent = fmt1(S.nat_v_est);
+
+  document.getElementById("bv_verdict_list").innerHTML = [
+    "空缺率自峰值 "+fmt1(S.peak_v)+"% 回落 <b>"+fmt1(Math.abs(S.dv_since_peak))+"pct</b> 至 "+fmt1(S.latest_v)+"%，同期失业率仅从 "+fmt1(S.peak_u)+"% 升至 <b>"+fmt1(S.latest_u)+"%</b>（"+sgn(S.du_since_peak)+"pct）。",
+    "V/U 由 "+fmt2(S.peak_ratio)+" 降至 <b>"+fmt2(S.latest_ratio)+"</b>，已回到供需平衡线附近，2019 年均值为 "+fmt2(S.pre2019_ratio)+"。",
+    "过程中失业率最高 <b>"+fmt1(Math.max.apply(null, P.filter(function(p){return p.d>="2022-01";}).map(function(p){return p.u;})))+"%</b>，始终未触及 6% 门槛，B-S 的「深度衰退」路径未兑现。"
+  ].map(function(t){return "<li>"+t+"</li>";}).join("");
+
+  var legend = document.getElementById("bv_legend");
+  SEG.forEach(function(s){
+    var b = document.createElement("span");
+    b.className = "bv-chip";
+    b.innerHTML = '<i style="background:'+s.color+'"></i>'+s.label;
+    b.onclick = function(){
+      if(hidden[s.k]){ delete hidden[s.k]; b.classList.remove("off"); }
+      else{ hidden[s.k]=1; b.classList.add("off"); }
+      drawBC(); drawTS();
+    };
+    legend.appendChild(b);
+  });
+
+  var T = {grid:"#1a2230", axis:"#2c3748", tick:"#6b7a90", text:"#9aa7b8", ink:"#e6edf3"};
+  function fit(cv, cssH){
+    var dpr = window.devicePixelRatio||1;
+    var w = cv.clientWidth || cv.parentNode.clientWidth;
+    cv.width = Math.round(w*dpr); cv.height = Math.round(cssH*dpr);
+    var ctx = cv.getContext("2d");
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,cssH);
+    return {ctx:ctx,w:w,h:cssH};
+  }
+  function roundRect(ctx,x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+    ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+    ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+    ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
+  }
+
+  var cvBC = document.getElementById("bc_canvas");
+  var uAll = P.map(function(p){return p.u;}), vAll = P.map(function(p){return p.v;});
+  var DOM = {
+    xMin: Math.min(3, Math.floor(Math.min.apply(null,uAll))),
+    xMax: Math.max(15, Math.ceil(Math.max.apply(null,uAll))),
+    yMin: Math.max(0, Math.min(1, Math.floor(Math.min.apply(null,vAll)))),
+    yMax: Math.max(8, Math.ceil(Math.max.apply(null,vAll)))
+  };
+  var geoBC = null;
+
+  function drawBC(){
+    var r = fit(cvBC, cvBC.clientHeight);
+    var ctx=r.ctx, w=r.w, h=r.h;
+    var pad = {l:60,r:22,t:24,b:48};
+    var pw = w-pad.l-pad.r, ph = h-pad.t-pad.b;
+    var X = function(u){return pad.l+(u-DOM.xMin)/(DOM.xMax-DOM.xMin)*pw;};
+    var Y = function(v){return pad.t+ph-(v-DOM.yMin)/(DOM.yMax-DOM.yMin)*ph;};
+    geoBC = {X:X,Y:Y};
+    ctx.strokeStyle = T.grid; ctx.lineWidth=1;
+    ctx.font = "11px 'Segoe UI','Microsoft YaHei',sans-serif"; ctx.fillStyle=T.tick;
+    for(var u=Math.ceil(DOM.xMin/2)*2; u<=DOM.xMax-1; u+=2){
+      ctx.beginPath();ctx.moveTo(X(u),pad.t);ctx.lineTo(X(u),pad.t+ph);ctx.stroke();
+      ctx.textAlign="center";ctx.textBaseline="top";ctx.fillText(u,X(u),pad.t+ph+9);
+    }
+    for(var v=Math.ceil(DOM.yMin); v<=DOM.yMax; v++){
+      ctx.beginPath();ctx.moveTo(pad.l,Y(v));ctx.lineTo(pad.l+pw,Y(v));ctx.stroke();
+      ctx.textAlign="right";ctx.textBaseline="middle";ctx.fillText(v,pad.l-10,Y(v));
+    }
+    ctx.strokeStyle=T.axis; ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,pad.t+ph);ctx.lineTo(pad.l+pw,pad.t+ph);ctx.stroke();
+    // B-S 6% 门槛
+    ctx.save();ctx.setLineDash([2,4]);ctx.strokeStyle="rgba(229,72,77,.5)";ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.moveTo(X(6),pad.t+2);ctx.lineTo(X(6),pad.t+ph);ctx.stroke();ctx.restore();
+    ctx.save();ctx.textAlign="left";ctx.textBaseline="top";ctx.fillStyle="rgba(229,72,77,.85)";ctx.font="10.5px 'Segoe UI','Microsoft YaHei',sans-serif";
+    ctx.fillText("B-S 门槛 6%", X(6)+5, pad.t+4);ctx.restore();
+    // V/U=1 线
+    ctx.save();ctx.setLineDash([6,5]);ctx.strokeStyle="#5b6572";ctx.lineWidth=1.3;
+    ctx.beginPath();ctx.moveTo(X(DOM.xMin),Y(DOM.xMin));ctx.lineTo(X(DOM.yMax),Y(DOM.yMax));ctx.stroke();ctx.restore();
+    ctx.save();ctx.translate(X(7.0),Y(7.0)-10);ctx.rotate(-Math.atan2(Y(7)-Y(6),X(7)-X(6)));
+    ctx.fillStyle="#5b6572";ctx.font="10.5px 'Segoe UI','Microsoft YaHei',sans-serif";ctx.textAlign="left";ctx.textBaseline="bottom";
+    ctx.fillText("V/U = 1 供需平衡线",6,-4);ctx.restore();
+    // 系列
+    SEG.forEach(function(sg){
+      if(hidden[sg.k]) return;
+      var pts = P.filter(function(p){return p.s.k===sg.k;});
+      if(!pts.length) return;
+      ctx.lineWidth=sg.lw; ctx.strokeStyle=sg.color;
+      ctx.globalAlpha = sg.k==="pre"?0.55:0.85;
+      ctx.beginPath();
+      pts.forEach(function(p,i){ var x=X(p.u),y=Y(p.v); if(i)ctx.lineTo(x,y); else ctx.moveTo(x,y); });
+      ctx.stroke(); ctx.globalAlpha=1;
+      pts.forEach(function(p){
+        ctx.beginPath();ctx.arc(X(p.u),Y(p.v),sg.r,0,7);ctx.fillStyle=sg.color;ctx.fill();
+        if(sg.k!=="pre"){ctx.strokeStyle="#0b0f14";ctx.lineWidth=1;ctx.stroke();}
+      });
+    });
+    // 最新点高亮
+    var last = P[P.length-1];
+    if(!hidden[last.s.k]){
+      var x=X(last.u), y=Y(last.v);
+      ctx.beginPath();ctx.arc(x,y,11,0,7);ctx.fillStyle="rgba(59,130,246,.16)";ctx.fill();
+      ctx.beginPath();ctx.arc(x,y,5.5,0,7);ctx.fillStyle="#0b0f14";ctx.fill();
+      ctx.lineWidth=2.4;ctx.strokeStyle=last.s.color;ctx.stroke();
+    }
+    ctx.fillStyle=T.text; ctx.font="12px 'Segoe UI','Microsoft YaHei',sans-serif";
+    ctx.textAlign="center";ctx.textBaseline="top";ctx.fillText("失业率 %", pad.l+pw/2, pad.t+ph+30);
+    ctx.save();ctx.translate(16,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("职位空缺率 %",0,0);ctx.restore();
+  }
+
+  var cvTS = document.getElementById("ts_canvas");
+  function drawTS(){
+    var r = fit(cvTS, cvTS.clientHeight);
+    var ctx=r.ctx, w=r.w, h=r.h;
+    var pad = {l:40,r:22,t:14,b:30};
+    var pw=w-pad.l-pad.r, ph=h-pad.t-pad.b, n=P.length;
+    var X = function(i){return pad.l+(n<=1?0:i/(n-1))*pw;};
+    var TS_MAX=16;
+    var Y = function(v){return pad.t+ph-(v-0)/TS_MAX*ph;};
+    var band = function(from,to,fill){
+      var i0=P.findIndex(function(p){return p.d.slice(0,7)>=from;});
+      var i1=-1;
+      for(var i=P.length-1;i>=0;i--){ if(P[i].d.slice(0,7)<=to){i1=i;break;} }
+      if(i0<0||i1<0) return;
+      ctx.fillStyle=fill; ctx.fillRect(X(i0),pad.t,Math.max(1,X(i1)-X(i0)),ph);
+    };
+    band("2020-01","2021-12","rgba(245,166,35,.10)");
+    band("2022-01","2024-12","rgba(229,72,77,.075)");
+    ctx.strokeStyle=T.grid; ctx.lineWidth=1;
+    ctx.font="11px 'Segoe UI','Microsoft YaHei',sans-serif"; ctx.fillStyle=T.tick;
+    for(var v=0; v<=TS_MAX; v+=4){
+      ctx.beginPath();ctx.moveTo(pad.l,Y(v));ctx.lineTo(pad.l+pw,Y(v));ctx.stroke();
+      ctx.textAlign="right";ctx.textBaseline="middle";ctx.fillText(v,pad.l-8,Y(v));
+    }
+    var seen={};
+    P.forEach(function(p,i){
+      var y=p.d.slice(0,4);
+      if(!seen[y] && (+y)%2===0 && (+p.d.slice(5,7))<=2){seen[y]=1;ctx.textAlign="center";ctx.textBaseline="top";ctx.fillText(y,X(i),pad.t+ph+8);}
+    });
+    var line = function(field,color,lw){
+      ctx.strokeStyle=color;ctx.lineWidth=lw;ctx.lineJoin="round";ctx.beginPath();
+      P.forEach(function(p,i){var x=X(i),y=Y(p[field]); if(i)ctx.lineTo(x,y); else ctx.moveTo(x,y);});
+      ctx.stroke();
+    };
+    line("v","#f5a623",1.9); line("u","#9aa7b8",1.9);
+    var pi = P.reduce(function(a,p,i){return p.v>P[a].v?i:a;},0);
+    ctx.setLineDash([3,3]);ctx.strokeStyle="rgba(245,166,35,.7)";ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(X(pi),Y(P[pi].v));ctx.lineTo(X(pi),pad.t+ph);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle="#f5a623";ctx.textAlign="center";ctx.textBaseline="bottom";ctx.font="10.5px 'Segoe UI','Microsoft YaHei',sans-serif";
+    ctx.fillText("空缺率峰值 "+fmt1(P[pi].v)+"%", X(pi), Y(P[pi].v)-6);
+  }
+
+  function redrawAll(){ drawBC(); drawTS(); }
+  var raf=null;
+  window.addEventListener("resize",function(){cancelAnimationFrame(raf);raf=requestAnimationFrame(redrawAll);});
+  if(window.ResizeObserver) new ResizeObserver(function(){cancelAnimationFrame(raf);raf=requestAnimationFrame(redrawAll);}).observe(document.body);
+  redrawAll();
+})();
+</script><div class="section-head"><span class="icon">🔭</span><h3>下一步关注</h3><span class="line"></span></div><div class="tip"><div class="tip-title">需要盯的下一个数据</div><div class="tip-body">后续关注：失业率与空缺率的月度联动轨迹</div></div></div>
+<div class="footer">
+  美国宏观数据看板 · 数据来源 FRED / BLS / BEA / Census · 自动更新<br>
+  基于「美国宏观数据训练营（829/830）」方法论构建 · 仅供研究参考，不构成投资建议
+</div>
+<div id="chart-modal" class="chart-modal">
+  <div class="modal-backdrop"></div>
+  <div class="modal-panel">
+    <div class="modal-head">
+      <div class="modal-title-wrap">
+        <div id="modal-title" class="modal-title"></div>
+        <div id="modal-sub" class="modal-sub"></div>
+      </div>
+      <button class="modal-close" title="关闭（Esc）">✕</button>
+    </div>
+    <div class="modal-hint">🖱️ 滚轮缩放 · 拖动底部滑块选择时间范围 · 拖动图表平移 · Esc 关闭</div>
+    <div id="modal-chart" class="modal-chart"></div>
+  </div>
+</div>
+</body></html>

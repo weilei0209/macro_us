@@ -1,0 +1,6 @@
+# 本看板数据管道仅使用 Python 标准库（urllib / json / os 等），无第三方依赖。
+# 直接使用系统 python3 即可，无需 pip install 任何包，也不会污染全局 Python 环境。
+# 如未来需要新增第三方依赖（如 pandas / requests），请先在项目内创建独立虚拟环境：
+#   python3 -m venv .venv
+#   source .venv/Scripts/activate   # Windows Git Bash
+#   pip install -r requirements.txt

@@ -1,0 +1,316 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+美国宏观数据看板 - 指标定义与映射
+所有指标 ID 定义、发布日历、派生指标规则集中在此，供 fetch / analyze / render 复用。
+数据源：FRED / BLS / BEA / Census 四大官方 API。
+"""
+import os
+
+# ---------------------------------------------------------------------------
+# 一、FRED 系列映射（跨机构聚合与派生指标的主来源）
+# key: 内部指标名；value: FRED series_id
+# ---------------------------------------------------------------------------
+FRED_SERIES = {
+    # ---- 利率与期限溢价（日频）----
+    "us10y":        "DGS10",       # 10年期美债收益率
+    "us2y":         "DGS2",        # 2年期美债收益率
+    "ffr":          "DFF",         # 联邦基金有效利率（日）
+    "sofr":         "SOFR",        # 担保隔夜融资利率
+    "t10y2y":       "T10Y2Y",      # 10Y-2Y 利差
+    "t10y3m":       "T10Y3M",      # 10Y-3M 利差
+    "bei10y":       "T10YIE",      # 10年盈亏平衡通胀率
+    "fwd5y5y":      "T5YIFR",      # 5年5年远期通胀补偿（锚定核心指标）
+    "tips10y":      "DFII10",      # 10年TIPS实际收益率
+    "mortgage30":   "MORTGAGE30US",# 30年固定房贷利率
+    "hy_spread":    "BAMLH0A0HYM2",# 高收益债信用利差
+    "vix":          "VIXCLS",      # VIX
+    "dxy":          "DTWEXBGS",    # 广义美元指数
+    # ---- 美联储资产负债表 / 流动性（周频/日频）----
+    "fed_assets":   "WALCL",       # 美联储总资产（周）
+    "on_rrp":       "RRPONTSYD",   # 隔夜逆回购余额（日）
+    "reserves":     "WRESBAL",     # 准备金余额（周）
+    "bank_loans":   "TOTLL",       # 银行信贷贷款（周）
+    # ---- 就业（月频）----
+    "payrolls":     "PAYEMS",      # 非农就业总人数（存量，用于算新增）
+    "unrate":       "UNRATE",      # 失业率 U3
+    "u6rate":       "U6RATE",      # 广义失业率 U6
+    "participation":"CIVPART",     # 劳动参与率
+    "labor_force":  "CLF16OV",     # 劳动力总量
+    "emratio":      "EMRATIO",     # 就业人口比
+    "jolts_open":   "JTSJOL",      # JOLTS 岗位空缺
+    "claims":       "ICSA",        # 首申失业金（周）
+    # ---- 通胀（月频）----
+    "cpi":          "CPIAUCSL",    # CPI 总
+    "cpi_core":     "CPILFESL",    # 核心 CPI
+    "cpi_median":   "MEDCPIM158SFRBCLE", # 中位 CPI
+    "pcepi":        "PCEPI",       # PCE 价格指数
+    "pce_core":     "PCEPILFE",    # 核心 PCE
+    "pce":          "PCE",         # PCE 名义支出
+    "pce_real":     "PCEC96",      # 实际 PCE
+    "mich_exp":     "MICH",        # 密歇根1年期通胀预期
+    "umcsent":      "UMCSENT",     # 密歇根消费者信心
+    # ---- 增长（月/季度）----
+    "gdp_real":     "GDPC1",       # 实际 GDP（季）
+    "gdp_qoq":      "A191RL1Q225SBEA", # 实际 GDP 环比折年
+    "gdp_pot":      "GDPPOT",      # 潜在 GDP（季）
+    "gdi":          "A261RX1Q020SBEA", # 实际 GDI（季）
+    "inv_private":  "GPDI",        # 私人投资（季）
+    "retail":       "RRSFS",       # 实际零售销售（月）
+    "inv_sales":    "ISRATIO",     # 库存销售比（月）
+    "saving_rate":  "PSAVERT",     # 储蓄率（月）
+    # ---- 领先指标 ----
+    "housing_starts":"HOUST",      # 新屋开工（月）
+}
+
+# FRED 系列的中文标签与分类（用于渲染）
+FRED_META = {
+    "us10y":      ("10年期美债收益率", "利率"),
+    "us2y":       ("2年期美债收益率", "利率"),
+    "ffr":        ("联邦基金利率", "货币"),
+    "sofr":       ("SOFR 隔夜利率", "货币"),
+    "t10y2y":     ("10Y-2Y 利差", "利率"),
+    "t10y3m":     ("10Y-3M 利差", "利率"),
+    "bei10y":     ("10年盈亏平衡通胀率", "通胀预期"),
+    "fwd5y5y":    ("5y5y 远期通胀补偿", "通胀预期"),
+    "tips10y":    ("10年TIPS实际利率", "利率"),
+    "mortgage30": ("30年房贷利率", "地产"),
+    "hy_spread":  ("高收益债利差", "金融条件"),
+    "vix":        ("VIX", "金融条件"),
+    "dxy":        ("广义美元指数", "汇率"),
+    "fed_assets": ("美联储总资产", "货币"),
+    "on_rrp":     ("隔夜逆回购余额", "货币"),
+    "reserves":   ("准备金余额", "货币"),
+    "bank_loans": ("商业银行贷款", "金融条件"),
+    "payrolls":   ("非农就业总人数", "就业"),
+    "unrate":     ("失业率 U3", "就业"),
+    "u6rate":     ("广义失业率 U6", "就业"),
+    "participation":("劳动参与率", "就业"),
+    "labor_force":("劳动力总量", "就业"),
+    "emratio":    ("就业人口比", "就业"),
+    "jolts_open": ("JOLTS 岗位空缺", "就业"),
+    "claims":     ("首申失业金", "就业"),
+    "cpi":        ("CPI 同比", "通胀"),
+    "cpi_core":   ("核心 CPI 同比", "通胀"),
+    "cpi_median": ("中位 CPI 同比", "通胀"),
+    "pcepi":      ("PCE 同比", "通胀"),
+    "pce_core":   ("核心 PCE 同比", "通胀"),
+    "pce":        ("PCE 名义支出", "增长"),
+    "pce_real":   ("实际 PCE", "增长"),
+    "mich_exp":   ("密歇根1年期通胀预期", "通胀预期"),
+    "umcsent":    ("密歇根消费者信心", "领先"),
+    "gdp_real":   ("实际 GDP", "增长"),
+    "gdp_qoq":    ("实际 GDP 环比折年", "增长"),
+    "gdp_pot":    ("潜在 GDP", "增长"),
+    "gdi":        ("实际 GDI", "增长"),
+    "inv_private":("私人投资", "增长"),
+    "retail":     ("实际零售销售", "消费"),
+    "inv_sales":  ("库存销售比", "领先"),
+    "saving_rate":("储蓄率", "消费"),
+    "housing_starts":("新屋开工", "地产"),
+}
+
+# ---------------------------------------------------------------------------
+# 二、BLS 系列映射（就业 + 通胀的官方硬数据）
+# BLS v2 API，单次最多 50 系列；series id 见 BLS 官方目录
+# ---------------------------------------------------------------------------
+BLS_SERIES = {
+    "payrolls_bls":      "CES0000000001",  # 非农总就业（可与 FRED PAYEMS 互证）
+    "ahe":               "CES0500000003",  # 平均时薪（私营非农）
+    "avg_weekly_hours":  "CES0500000002",  # 平均周工时（私营非农）
+    "cpi_bls":           "CUUR0000SA0",    # CPI-U 未季调
+    "cpi_sa":            "CUSR0000SA0",    # CPI-U 季调
+    "cpi_core_bls":      "CUUR0000SA0L1E", # 核心 CPI-U
+    "cpi_supercore":     "CUUR0000SA0L12E",# 核心服务（住房+医疗等，近似超级核心）
+    "cpi_shelter":       "CUUR0000SAH",    # 住房（shelter）
+    "cpi_energy":        "CUUR0000SA0E",   # 能源
+    "cpi_food":          "CUUR0000SA0L1",  # 食品
+    "eci_wages":         "CIS2020000000000I", # 雇佣成本指数-工资（季度）
+    "unrate_bls":        "LNS14000000",    # 失业率 U3
+    "u6_bls":            "LNS13327709",    # U6
+    "participation_bls": "LNS11300000",    # 劳动参与率
+    "emratio_bls":       "LNS12300000",    # 就业人口比
+}
+
+# ---------------------------------------------------------------------------
+# 三、BEA 数据集映射（国民账户：GDP / PCE / GDI 详细分项）
+# method=GetData, DataSetName=NIPA, TableName 见 BEA 文档
+# ---------------------------------------------------------------------------
+BEA_TABLES = {
+    "gdp_nominal":      {"table": "T10101", "desc": "名义 GDP"},          # 需验证
+    "gdp_real":         {"table": "T10106", "desc": "实际 GDP"},          # 需验证
+    "pce_price":        {"table": "T20804", "desc": "PCE 价格指数"},       # 需验证
+    "gdi":              {"table": "T10706", "desc": "GDI"},               # 需验证
+}
+
+# ---------------------------------------------------------------------------
+# 四、Census 数据集映射（零售 / 地产 / 贸易）
+# ---------------------------------------------------------------------------
+CENSUS_DATASETS = {
+    "retail":   {"ds": "timeseries/eits/marts",  "desc": "月度零售贸易"},
+    "housing":  {"ds": "timeseries/eits/ressales","desc": "新屋销售"},
+}
+
+# ---------------------------------------------------------------------------
+# 五、发布日历（精准增量更新的核心）
+# 每个条目：指标 -> (API, 频率, 相对发布日期规则)
+# 规则用自然月/周描述，脚本据此判断"今天是否该拉这个指标"
+# ---------------------------------------------------------------------------
+# 频率类型：daily=每个工作日, weekly=每周, monthly=每月, quarterly=每季, event=事件驱动
+RELEASE_CALENDAR = {
+    # ---- 日频市场指标（FRED，配额宽松，每个工作日更新）----
+    "us10y":        ("FRED", "daily"),
+    "us2y":         ("FRED", "daily"),
+    "ffr":          ("FRED", "daily"),
+    "sofr":         ("FRED", "daily"),
+    "t10y2y":       ("FRED", "daily"),
+    "t10y3m":       ("FRED", "daily"),
+    "bei10y":       ("FRED", "daily"),
+    "fwd5y5y":      ("FRED", "daily"),
+    "tips10y":      ("FRED", "daily"),
+    "hy_spread":    ("FRED", "daily"),
+    "vix":          ("FRED", "daily"),
+    "dxy":          ("FRED", "daily"),
+    "on_rrp":       ("FRED", "daily"),
+    # ---- 周频指标（每周四首申，周五资产负债表）----
+    "claims":       ("FRED", "weekly_thu"),
+    "fed_assets":   ("FRED", "weekly_fri"),
+    "reserves":     ("FRED", "weekly_fri"),
+    "bank_loans":   ("FRED", "weekly_fri"),
+    "mortgage30":   ("FRED", "weekly"),
+    # ---- 月频就业（首周周五非农，月中 JOLTS 略滞后）----
+    "payrolls":     ("FRED", "monthly_1st_fri"),
+    "unrate":       ("FRED", "monthly_1st_fri"),
+    "u6rate":       ("FRED", "monthly_1st_fri"),
+    "participation":("FRED", "monthly_1st_fri"),
+    "labor_force":  ("FRED", "monthly_1st_fri"),
+    "emratio":      ("FRED", "monthly_1st_fri"),
+    "ahe":          ("BLS",  "monthly_1st_fri"),
+    "avg_weekly_hours":("BLS","monthly_1st_fri"),
+    "jolts_open":   ("FRED", "monthly_jolts"),
+    # ---- 月频通胀（月中 CPI，月末 PCE）----
+    "cpi":          ("FRED", "monthly_mid"),
+    "cpi_core":     ("FRED", "monthly_mid"),
+    "cpi_median":   ("FRED", "monthly_mid"),
+    "cpi_bls":      ("BLS",  "monthly_mid"),
+    "cpi_sa":       ("BLS",  "monthly_mid"),
+    "cpi_core_bls": ("BLS",  "monthly_mid"),
+    "cpi_supercore":("BLS",  "monthly_mid"),
+    "cpi_shelter":  ("BLS",  "monthly_mid"),
+    "cpi_energy":   ("BLS",  "monthly_mid"),
+    "cpi_food":     ("BLS",  "monthly_mid"),
+    "pcepi":        ("FRED", "monthly_end"),
+    "pce_core":     ("FRED", "monthly_end"),
+    "pce":          ("FRED", "monthly_end"),
+    "pce_real":     ("FRED", "monthly_end"),
+    "mich_exp":     ("FRED", "monthly_mid"),
+    "umcsent":      ("FRED", "monthly_mid"),
+    # ---- 月频消费/领先 ----
+    "retail":       ("FRED", "monthly_mid"),
+    "inv_sales":    ("FRED", "monthly_mid"),
+    "saving_rate":  ("FRED", "monthly_end"),
+    "housing_starts":("FRED","monthly_mid"),
+    # ---- 季度增长（月末 BEA）----
+    "gdp_real":     ("FRED", "quarterly"),
+    "gdp_qoq":      ("FRED", "quarterly"),
+    "gdp_pot":      ("FRED", "quarterly"),
+    "gdi":          ("FRED", "quarterly"),
+    "inv_private":  ("FRED", "quarterly"),
+    "eci_wages":    ("BLS",  "quarterly"),
+}
+
+# ---------------------------------------------------------------------------
+# 五-补、发布时间规则说明（解决"统计月份 vs 发布时间"的混淆）
+# 关键语义：FRED 里月度数据的日期戳（如 2018-03-01）代表"统计参考期"（2018年3月），
+# 而非数据发布的当天。下表给出每类频率的发布规则，供前端标注。
+# ---------------------------------------------------------------------------
+RELEASE_RULE = {
+    # 日频/周频：日期即当期，无错位
+    "daily":       "当期数据（每日）",
+    "weekly":      "当期数据（每周）",
+    "weekly_thu":  "当周数据（周四发布）",
+    "weekly_fri":  "当周数据（周五发布）",
+    "monthly":     "当期月份数据",
+    # 月频：日期戳 = 统计月份，发布通常滞后到下月
+    "monthly_1st_fri": "统计月数据 · 次月首周周五发布",
+    "monthly_jolts":   "统计月数据 · 滞后约 1~2 个月发布",
+    "monthly_mid":     "统计月数据 · 次月中旬发布",
+    "monthly_end":     "统计月数据 · 次月末发布",
+    # 季频：日期戳 = 统计季度，发布滞后到次季首月
+    "quarterly":   "统计季度数据 · 次季首月月末发布",
+}
+
+# 人类可读的频率简称（用于指标卡标签）
+FREQ_SHORT = {
+    "daily": "日", "weekly": "周", "weekly_thu": "周", "weekly_fri": "周",
+    "monthly": "月", "monthly_1st_fri": "月", "monthly_jolts": "月",
+    "monthly_mid": "月", "monthly_end": "月", "quarterly": "季",
+}
+
+
+# ---------------------------------------------------------------------------
+# 六、派生指标计算规则（专题分析的数据基础）
+# 每个派生指标：名称 -> (依赖的原始指标, 计算函数说明)
+# ---------------------------------------------------------------------------
+DERIVED_INDICATORS = {
+    "vu_ratio":     {"deps": ["jolts_open", "unrate"], "desc": "V/U 比率 = 岗位空缺数 / 失业人数（需 CLF16OV 与 unrate 推算失业人数）"},
+    "payrolls_mom": {"deps": ["payrolls"], "desc": "非农新增 = 非农存量月环比差分"},
+    "payrolls_3mma":{"deps": ["payrolls"], "desc": "非农新增 3 个月移动平均"},
+    "cpi_yoy":      {"deps": ["cpi"], "desc": "CPI 同比（指数年化）"},
+    "pce_yoy":      {"deps": ["pcepi"], "desc": "PCE 同比"},
+    "core_pce_yoy": {"deps": ["pce_core"], "desc": "核心 PCE 同比"},
+    "cpi_pce_gap":  {"deps": ["cpi_yoy", "pce_yoy"], "desc": "CPI-PCE 剪刀差（正常 +0.3~0.5，倒挂为异常）"},
+    "r_minus_g":    {"deps": ["tips10y", "gdp_qoq"], "desc": "实际利率 r - 实际增速 g（增长化债空间）"},
+    "output_gap":   {"deps": ["gdp_real", "gdp_pot"], "desc": "产出缺口 = (实际GDP/潜在GDP - 1) * 100"},
+}
+
+# ---------------------------------------------------------------------------
+# 七、专题规则阈值（核心框架的固化）
+# ---------------------------------------------------------------------------
+TOPIC_RULES = {
+    "inflation_anchor": {
+        "name": "通胀锚定是否动摇",
+        "indicator": "fwd5y5y",
+        "desc": "5y5y 远期通胀补偿显著抬升（相对近 1 年均值偏离 > 50bp）",
+        "threshold": 0.5,   # 百分比点
+        "framework": "锚定不是看绝对水平，而是看长端预期对短期通胀的敏感性。5y5y 是最严格的锚定指标。",
+    },
+    "labor_freeze": {
+        "name": "就业是否冻僵",
+        "indicator": "vu_ratio",
+        "desc": "V/U 比率持续 < 1 且首申抬升",
+        "threshold_vu": 1.0,
+        "framework": "低招聘 + 低解雇的'冻僵'状态；V/U 领先工资通胀约 2 季度。",
+    },
+    "beveridge_curve": {
+        "name": "贝弗里奇曲线",
+        "indicator": "beveridge",
+        "desc": "失业率 vs 岗位空缺率散点轨迹，判断曲线内外移",
+        "framework": "曲线外移=匹配效率下降；垂直下降=空缺崩而失业率不动（2021-22 美联储获胜）。",
+    },
+    "qt_end": {
+        "name": "缩表是否到终点",
+        "indicator": "on_rrp",
+        "desc": "ON RRP 余额接近归零 + SOFR 突破走廊上限",
+        "threshold": 100,   # 亿美元
+        "framework": "ON RRP 归零且银行间开始拆借=缩表接近终点，SOFR 可能突破走廊上限。",
+    },
+    "technical_recession": {
+        "name": "是否技术性衰退",
+        "indicator": "gdp_qoq",
+        "desc": "实际 GDP 连续两季环比折年负增长",
+        "framework": "1948 以来 10 次技术性衰退全为 NBER 衰退；但需 NBER 一揽子交叉验证。",
+    },
+    "r_minus_g": {
+        "name": "增长化债空间",
+        "indicator": "r_minus_g",
+        "desc": "实际利率 r vs 实际增速 g 的比较",
+        "framework": "r<g 时可自然化债；r≈g 则化债空间有限，需警惕通胀化债。",
+    },
+    "cpi_pce_inversion": {
+        "name": "CPI-PCE 倒挂",
+        "indicator": "cpi_pce_gap",
+        "desc": "CPI 同比跌破 PCE 同比（罕见倒挂）",
+        "framework": "正常 CPI≈PCE+0.3~0.5pp；2026 年以来罕见倒挂，源于住房降温 + AI 推升 PCE 分项。",
+    },
+}
