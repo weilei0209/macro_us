@@ -106,7 +106,7 @@
         axisLabel:{color:THEME.text3, fontSize: big?11:10},
         axisTick:{show:false}
       },
-      yAxis:{type:'value', scale:true,
+      yAxis:{type:'value',
         axisLine:{show:false}, axisTick:{show:false},
         splitLine:{lineStyle:{color:THEME.splitline}},
         axisLabel:{color:THEME.text3, fontSize: big?11:10}
@@ -153,7 +153,11 @@
     if(lo === Infinity || hi === -Infinity) return;
     var pad = (hi - lo) * 0.08;
     if(pad === 0) pad = Math.abs(hi) * 0.05 || 1;
-    chart.setOption({ yAxis:{ min: lo - pad, max: hi + pad } });
+    // 四舍五入到 4 位小数，避免浮点边界触发 ECharts 异常刻度
+    var ymin = Math.round((lo - pad) * 10000) / 10000;
+    var ymax = Math.round((hi + pad) * 10000) / 10000;
+    if(!(ymax > ymin)){ ymax = ymin + 1; }
+    chart.setOption({ yAxis:{ min: ymin, max: ymax } });
   }
 
   // 把日期字符串（如 '2022-01-01'）转成 dates 数组中第一个 >= 该日期的索引
@@ -174,6 +178,8 @@
     chart.setOption(buildLineOption(data, opts.big === true, opts.zoomStartIndex));
     // Y 轴随 X 轴缩放自动适配
     chart.on('datazoom', function(){ fitYAxis(chart, data); });
+    // 初始化后立即按当前可见区间拟合一次 Y 轴（避免默认 0 起/异常极值）
+    fitYAxis(chart, data);
     chartInstances.push(chart);
     window.addEventListener('resize', function(){ chart.resize(); });
     return chart;

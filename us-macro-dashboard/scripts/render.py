@@ -116,8 +116,20 @@ KPI_CARDS = [
 # ---------------------------------------------------------------------------
 # 图表数据构造
 # ---------------------------------------------------------------------------
-def series_points(series, n=120):
-    pts = [p for p in series if p["value"] is not None][-n:]
+# 小图默认展示的起始日期（放大图默认 2022 起，小图保留更长历史，2000 年后都有）
+CHART_HISTORY_START = "2000-01-01"
+# 单图数据点安全上限（防异常序列过大）
+MAX_POINTS = 10000
+
+def series_points(series, n=MAX_POINTS):
+    # 优先按"2000 年以后"过滤，保证小图有完整长期走势；
+    # 若 2000 后点数超过上限 n，则回退到最近 n 点（避免极端密集）
+    pts = [p for p in series if p["value"] is not None]
+    since = [p for p in pts if p["date"] >= CHART_HISTORY_START]
+    if len(since) >= 24:
+        pts = since
+    if len(pts) > n:
+        pts = pts[-n:]
     return {"dates": [p["date"] for p in pts], "values": [p["value"] for p in pts]}
 
 
@@ -137,7 +149,8 @@ def vu_series(series_data):
 
 
 def yoy_series(series):
-    pts = [p for p in series if p["value"] is not None]
+    # 保留 1999-01 起的数据用于计算同比基准，输出时仅展示 2000-01 起
+    pts = [p for p in series if p["value"] is not None and p["date"] >= "1999-01-01"]
     pts.sort(key=lambda x: x["date"])
     idx = {p["date"]: i for i, p in enumerate(pts)}
     dates, vals = [], []
@@ -146,8 +159,9 @@ def yoy_series(series):
         if i >= 12:
             base = pts[i - 12]["value"]
             if base and base != 0:
-                vals.append((p["value"] / base - 1) * 100)
-                dates.append(p["date"])
+                if p["date"] >= CHART_HISTORY_START:
+                    vals.append((p["value"] / base - 1) * 100)
+                    dates.append(p["date"])
     return {"dates": dates, "values": vals}
 
 
@@ -179,36 +193,53 @@ def freq_rule_for_chart(chart):
     return ""
 
 
-def payrolls_revision_chart():
-    """非农新增 + 修订对比图表：实线=最新修订值，虚线=n-1/n-2 月调整前数据。
-    读取 data/payrolls_revisions.json（由 fetch_all 的 build_payrolls_revisions 生成）。"""
-    path = os.path.join(DATA_DIR, "payrolls_revisions.json")
-    if not os.path.exists(path):
-        # 回退：用 series.json 里 payrolls 的差分算新增（无修订虚线）
-        return {"dates": [], "release_rule": "统计月数据 · 次月首周周五发布",
-                "series": [], "_no_rev": True}
-    with open(path, encoding="utf-8") as f:
-        rev = json.load(f)
-    months = rev.get("months", [])
-    dates = [m + "-01" for m in months]  # 转回 YYYY-MM-01 供前端 category 轴
-    latest = rev.get("latest_mom", [])
-    initial = rev.get("initial_mom", [])
-    rev1 = rev.get("rev1_mom", [])
-    # 实线：最新修订值（主序列）
+def payrolls_revision_chart(series_data):
+    """非农新增 + 修订对比图表：实线=最新修订值（2000 至今全量），虚线=n-1/n-2 月调整前数据。
+    实线从 series.json 的 payrolls 存量差分算全量；虚线读 data/payrolls_revisions.json。"""
+    # 实线：从 payrolls 存量差分算非农新增（2000 至今）
+    payrolls = series_data.get("payrolls", [])
+    pts = [p for p in payrolls if p["value"] is not None and p["date"] >= "1999-01-01"]
+    pts.sort(key=lambda x: x["date"])
+    dates, latest = [], []
+    for i in range(1, len(pts)):
+        d = pts[i]["date"]
+        if d >= CHART_HISTORY_START:
+            dates.append(d)
+            latest.append(round(pts[i]["value"] - pts[i-1]["value"], 1))
+
     series = [{"name": "非农新增（最新）", "values": latest, "color": "#e5484d"}]
-    # 虚线：初值（调整前）。仅对最近 3 个月显示点，其余为 null，避免虚线铺满历史
-    # 需求：n-1 和 n-2 月用虚线展现"调整前数据"，即最近两个已发布月 + 当月
-    def sparse(vals, keep_last=3):
-        out = [None] * len(vals)
-        n = len(vals)
+
+    # 虚线：从 payrolls_revisions.json 取修订数据（仅最近 2-3 月显示）
+    path = os.path.join(DATA_DIR, "payrolls_revisions.json")
+    rev = None
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                rev = json.load(f)
+        except Exception:
+            rev = None
+
+    def sparse(vals, keep_last):
+        out = [None] * len(dates)
+        if not rev:
+            return out
+        # 建立 month -> 修订值 映射，只取与 dates 末尾对齐的最近几个月
+        rm = dict(zip(rev.get("months", []), vals))
+        n = len(dates)
         for i in range(n):
-            if i >= n - keep_last and vals[i] is not None:
-                out[i] = vals[i]
+            m = dates[i][:7]
+            if i >= n - keep_last and m in rm and rm[m] is not None:
+                out[i] = rm[m]
         return out
-    series.append({"name": "首次发布值（调整前）", "values": sparse(initial, 3),
-                   "color": "#f5a623", "dashed": True, "showSymbol": True})
-    series.append({"name": "1 次修正后", "values": sparse(rev1, 2),
-                   "color": "#3b82f6", "dashed": True, "showSymbol": True})
+
+    if rev:
+        initial = rev.get("initial_mom", [])
+        rev1 = rev.get("rev1_mom", [])
+        series.append({"name": "首次发布值（调整前）", "values": sparse(initial, 3),
+                       "color": "#f5a623", "dashed": True, "showSymbol": True})
+        series.append({"name": "1 次修正后", "values": sparse(rev1, 2),
+                       "color": "#3b82f6", "dashed": True, "showSymbol": True})
+
     return {
         "dates": dates,
         "release_rule": "统计月数据 · 次月首周周五发布（虚线为历史发布时的初值/一次修正值）",
@@ -221,7 +252,7 @@ def build_chart(series_data, chart):
     rule = freq_rule_for_chart(chart)
     # 非农新增 + 修订对比（实线最新值 + 虚线初值/1次修正）
     if cid == "emp_payrolls":
-        return payrolls_revision_chart()
+        return payrolls_revision_chart(series_data)
     if cid in ("chart_vu", "emp_vu", "td_vu"):
         d = vu_series(series_data)
         return {"dates": d["dates"], "release_rule": rule, "series": [{"name": "V/U 比率", "values": d["values"], "color": "#e5484d"}]}
