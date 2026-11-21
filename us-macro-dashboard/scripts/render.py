@@ -378,19 +378,43 @@ def build_chart(series_data, chart):
     if cid in ("chart_infl_yoy", "td_yoy"):
         cpi = yoy_series(series_data.get("cpi", []))
         pce = yoy_series(series_data.get("pcepi", []))
-        return {"dates": cpi["dates"], "release_rule": rule, "series": [
+        dates = cpi["dates"]
+        # 2025-10 CPI 因政府停摆缺失而 PCE 有值，必须按日期对齐，否则索引配对会整体错位一个月
+        pce_v = align_series(dates, [{"date": d, "value": v} for d, v in zip(pce["dates"], pce["values"])])
+        return {"dates": dates, "release_rule": rule, "series": [
             {"name": "CPI 同比", "values": cpi["values"], "color": "#e5484d"},
-            {"name": "PCE 同比", "values": pce["values"], "color": "#3b82f6"},
+            {"name": "PCE 同比", "values": pce_v, "color": "#3b82f6"},
         ]}
     if cid == "inf_yoy":
-        # 通胀页：CPI vs PCE 环比（月度环比 MoM，均季调），含核心 CPI 环比
+        # 通胀页：CPI vs PCE 环比（月度环比 MoM，均季调）
         cpi = mom_series(series_data.get("cpi", []))
         pce = mom_series(series_data.get("pcepi", []))
-        core = mom_series(series_data.get("cpi_core", []))
-        return {"dates": cpi["dates"], "release_rule": rule, "series": [
+        dates = cpi["dates"]
+        # PCE 发布比 CPI 晚一期，按日期对齐避免末端错位
+        pce_v = align_series(dates, [{"date": d, "value": v} for d, v in zip(pce["dates"], pce["values"])])
+        return {"dates": dates, "release_rule": rule, "series": [
             {"name": "CPI 环比", "values": cpi["values"], "color": "#e5484d"},
-            {"name": "核心 CPI 环比", "values": core["values"], "color": "#f5a623"},
-            {"name": "PCE 环比", "values": pce["values"], "color": "#3b82f6"},
+            {"name": "PCE 环比", "values": pce_v, "color": "#3b82f6"},
+        ]}
+    if cid == "inf_core_pce":
+        # 核心口径：核心 CPI vs 核心 PCE 环比（MoM，均季调）
+        cpi_core = mom_series(series_data.get("cpi_core", []))
+        pce_core = mom_series(series_data.get("pce_core", []))
+        dates = cpi_core["dates"]
+        pce_v = align_series(dates, [{"date": d, "value": v} for d, v in zip(pce_core["dates"], pce_core["values"])])
+        return {"dates": dates, "release_rule": rule, "series": [
+            {"name": "核心 CPI 环比", "values": cpi_core["values"], "color": "#f5a623"},
+            {"name": "核心 PCE 环比", "values": pce_v, "color": "#3b82f6"},
+        ]}
+    if cid == "inf_core_pce_annual":
+        # 核心口径：核心 CPI vs 核心 PCE 同比
+        cpi_core = yoy_series(series_data.get("cpi_core", []))
+        pce_core = yoy_series(series_data.get("pce_core", []))
+        dates = cpi_core["dates"]
+        pce_v = align_series(dates, [{"date": d, "value": v} for d, v in zip(pce_core["dates"], pce_core["values"])])
+        return {"dates": dates, "release_rule": rule, "series": [
+            {"name": "核心 CPI 同比", "values": cpi_core["values"], "color": "#f5a623"},
+            {"name": "核心 PCE 同比", "values": pce_v, "color": "#3b82f6"},
         ]}
     if cid == "inf_core":
         # 核心商品 vs 核心服务 vs 超级核心（核心服务剔住房）：月度环比（MoM %，均季调）
@@ -418,14 +442,14 @@ def build_chart(series_data, chart):
             {"name": "CPI 租金环比", "values": rent_aligned, "color": "#e5484d"},
         ]}
     if cid == "inf_yoy_annual":
-        # 通胀页：CPI vs PCE 同比（含核心 CPI）
+        # 通胀页：CPI vs PCE 同比
         cpi = yoy_series(series_data.get("cpi", []))
         pce = yoy_series(series_data.get("pcepi", []))
-        core = yoy_series(series_data.get("cpi_core", []))
-        return {"dates": cpi["dates"], "release_rule": rule, "series": [
+        dates = cpi["dates"]
+        pce_v = align_series(dates, [{"date": d, "value": v} for d, v in zip(pce["dates"], pce["values"])])
+        return {"dates": dates, "release_rule": rule, "series": [
             {"name": "CPI 同比", "values": cpi["values"], "color": "#e5484d"},
-            {"name": "核心 CPI 同比", "values": core["values"], "color": "#f5a623"},
-            {"name": "PCE 同比", "values": pce["values"], "color": "#3b82f6"},
+            {"name": "PCE 同比", "values": pce_v, "color": "#3b82f6"},
         ]}
     if cid == "inf_core_annual":
         # 核心商品 vs 核心服务 vs 超级核心（核心服务剔住房）：同比（%）
@@ -524,8 +548,10 @@ THEME_CHARTS = {
         {"id": "emp_claims", "title": "首申失业金", "sub": "唯一周度就业指标，领先失业率", "series": ["claims"], "color": "#3b82f6"},
     ],
     "inflation": [
-        {"id": "inf_yoy", "title": "CPI vs PCE 环比", "sub": "两套口径的月度环比（MoM，季调），含核心 CPI，看边际通胀动能", "series": [], "color": "#e5484d"},
-        {"id": "inf_yoy_annual", "title": "CPI vs PCE 同比", "sub": "两套口径的同比，含核心 CPI，看通胀趋势水平", "series": [], "color": "#e5484d"},
+        {"id": "inf_yoy", "title": "CPI vs PCE 环比", "sub": "两套口径的月度环比（MoM，季调），看边际通胀动能", "series": [], "color": "#e5484d"},
+        {"id": "inf_yoy_annual", "title": "CPI vs PCE 同比", "sub": "两套口径的同比，看通胀趋势水平", "series": [], "color": "#e5484d"},
+        {"id": "inf_core_pce", "title": "核心 CPI vs 核心 PCE 环比", "sub": "剔除食品能源后的核心口径月度环比（MoM，季调）——PCE 是 FOMC 的官方目标锚", "series": ["cpi_core", "pce_core"], "color": "#f5a623"},
+        {"id": "inf_core_pce_annual", "title": "核心 CPI vs 核心 PCE 同比", "sub": "两套核心口径的同比对比，核心 PCE 才是美联储 2% 目标的计分板", "series": ["cpi_core", "pce_core"], "color": "#f5a623"},
         {"id": "inf_core", "title": "核心通胀环比：核心商品 vs 核心服务 vs 超级核心", "sub": "核心 CPI 拆商品与服务，叠加超级核心（核心服务剔住房），看边际动能", "series": ["core_goods_cpi", "core_services_cpi"], "color": "#e5484d"},
         {"id": "inf_core_annual", "title": "核心通胀同比：核心商品 vs 核心服务 vs 超级核心", "sub": "核心 CPI 拆商品与服务，叠加超级核心（核心服务剔住房）——美联储最关注的服务内生通胀", "series": ["core_goods_cpi", "core_services_cpi"], "color": "#e5484d"},
         {"id": "inf_housing", "title": "住房通胀环比：新租约 vs CPI 租金", "sub": "Zillow 新租约租金（ZORI）领先 CPI 租金约 12 个月，看边际传导", "series": ["zori", "cpi_rent"], "color": "#e5484d"},
@@ -806,8 +832,10 @@ def chart_meta(chart):
         "emp_vu": "来源 BLS（JOLTS + CPS） · 单位 倍 · 岗位空缺 ÷ 失业人数",
         "td_vu": "来源 BLS（JOLTS + CPS） · 单位 倍 · 岗位空缺 ÷ 失业人数",
         "chart_infl_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
-        "inf_yoy": "来源 BLS / BEA · 单位 % · CPI、核心 CPI 与 PCE 月度环比（MoM，季调）对比",
-        "inf_yoy_annual": "来源 BLS / BEA · 单位 % · CPI、核心 CPI 与 PCE 同比对比",
+        "inf_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 月度环比（MoM，季调）对比",
+        "inf_yoy_annual": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
+        "inf_core_pce": "来源 BLS / BEA · 单位 % · 核心 CPI（剔除食品能源）与核心 PCE（剔除食品能源）的月度环比（MoM，季调）",
+        "inf_core_pce_annual": "来源 BLS / BEA · 单位 % · 核心 CPI 与核心 PCE 同比对比，两者口径差异主要在住房与医疗权重",
         "td_yoy": "来源 BLS / BEA · 单位 % · CPI 与 PCE 同比对比",
         "inf_core": "来源 BLS · 单位 % · 核心商品=剔除食品能源商品；核心服务=剔除能源服务；超级核心=核心服务再剔住房（按 BLS 相对重要性加权）；均月度环比（季调）",
         "inf_core_annual": "来源 BLS · 单位 % · 核心商品=剔除食品能源商品；核心服务=剔除能源服务；超级核心=核心服务再剔住房（按 BLS 相对重要性加权）；均同比",
