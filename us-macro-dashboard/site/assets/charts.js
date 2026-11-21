@@ -69,6 +69,7 @@
     var period = dayFmt ? formatDay(params[0].axisValue) : formatPeriod(params[0].axisValue, isQuarterly);
     var s = '<div style="font-weight:600;margin-bottom:2px;">统计期：' + period + '</div>';
     params.forEach(function(p){
+      if(p.seriesType === 'custom') return;   // 衰退区间标注不是数据序列，不进 tooltip
       var v;
       if(p.value==null || p.value==='') v = '—';
       else if(unit === 'bp') v = fmtBp(p.value) + 'bp';   // 差值类图表带符号，便于分辨正负
@@ -136,6 +137,38 @@
     });
     var fs = big ? 13 : 11;   // 字号
     var n = data.dates.length;
+    // 衰退区间标注：半透明竖柱贯穿绘图区。
+    // 用 custom series 而非 markArea —— 类目轴 boundaryGap:false 时 markArea 只能覆盖到类目中心，
+    // 首尾各差半格；custom 可以按 api.size 精确扩到季度边界，且随 dataZoom 自动重算像素。
+    (data.bands || []).forEach(function(b, bi){
+      var ranges = (b.ranges || []).map(function(r){
+        var s = data.dates.indexOf(r[0]);
+        if(s < 0) return null;
+        var e = data.dates.indexOf(r[1]);
+        return [s, e < 0 ? s : e];
+      }).filter(function(x){ return x; });
+      if(!ranges.length) return;
+      series.push({
+        // z 让先声明的（技术性衰退）压在后声明的之上，重叠时段偏红而非偏蓝，便于分辨"两定义同时命中"
+        name: b.name, type:'custom', z: (data.bands.length - bi) * 0.5, silent:true, legendHoverLink:false,
+        itemStyle:{color: b.color},
+        data: ranges,
+        renderItem: function(params, api){
+          var cs = params.coordSys;
+          if(!cs) return null;
+          var half = api.size([1, 0])[0] / 2;   // 扩到季度格子边界，避免首尾各差半格
+          var x0 = api.coord([api.value(0), 0])[0] - half;
+          var x1 = api.coord([api.value(1), 0])[0] + half;
+          var l = Math.max(cs.x, x0), r = Math.min(cs.x + cs.width, x1);
+          if(!(r > l)) return null;             // 区间整体在可视窗口外
+          return {
+            type:'rect', silent:true,
+            shape:{ x:l, y:cs.y, width:r - l, height:cs.height },
+            style:{ fill: b.fill }
+          };
+        }
+      });
+    });
     // 用百分比设置默认缩放范围（比 startValue 更可靠，不依赖精确字符串匹配）
     var zoomCfg = {};
     if(zoomStartIndex != null && zoomStartIndex > 0 && zoomStartIndex < n){
