@@ -31,7 +31,15 @@ window.__CHARTS = {"gro_gdp": {"dates": ["2000-01-01", "2000-04-01", "2000-07-01
 document.addEventListener("DOMContentLoaded", function(){
   Object.keys(window.__CHARTS).forEach(function(id){
     var el = document.getElementById(id);
-    if(el) window.renderLineChart(el, window.__CHARTS[id]);
+    if(!el) return;
+    var d = window.__CHARTS[id];
+    if(d && d.kind === "waterfall"){
+      window.__WATERFALLS = window.__WATERFALLS || {};
+      window.__WATERFALLS[id] = {data: d, key: d.default};
+      window.renderWaterfall(el, d, d.default);
+    } else {
+      window.renderLineChart(el, d);
+    }
   });
 });
 </script>

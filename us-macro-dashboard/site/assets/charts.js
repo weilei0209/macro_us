@@ -273,7 +273,108 @@
     return chart;
   };
 
-  // ===== 点击放大 =====
+  // ===== 瀑布图：BEI 变动归因 =====
+  // data = {kind:'waterfall', unit:'bp', default:'1m', windows:[
+  //   {key,label,from,to,nom0,nom1,real0,real1,bei0,bei1,leg_nom,leg_real}]}
+  // 恒等式：BEI = 名义 − 实际（bp）；名义腿贡献 = Δ名义，实际腿贡献 = −Δ实际
+  var wfCharts = {};
+
+  function fmtBp(v){
+    var n = Number(v);
+    if(isNaN(n)) return '—';
+    return (n > 0 ? '+' : (n < 0 ? '−' : '')) + Math.abs(n).toFixed(1);
+  }
+  function md(s){ return s ? String(s).slice(5).replace('-', '/') : ''; }
+
+  function wfOption(w, data){
+    var t = THEME;
+    var a = w.bei0, b = a + w.leg_nom, c = b + w.leg_real;     // 逐步累计（期末应等于 bei1）
+    var names  = ['期初 BEI', '名义腿', '实际腿', '期末 BEI'];
+    var base   = [Math.min(0, a), Math.min(a, b), Math.min(b, c), Math.min(0, c)];
+    var size   = [Math.abs(a), Math.abs(w.leg_nom), Math.abs(w.leg_real), Math.abs(c)];
+    var colors = [t.text2,
+                  w.leg_nom  >= 0 ? t.red : t.green,
+                  w.leg_real >= 0 ? t.red : t.green,
+                  t.purple];
+    var texts  = [a.toFixed(1), fmtBp(w.leg_nom) + 'bp', fmtBp(w.leg_real) + 'bp', c.toFixed(1)];
+
+    var lo = Math.min(a, b, c), hi = Math.max(a, b, c);
+    var pad = Math.max((hi - lo) * 0.45, 6);
+
+    return {
+      backgroundColor: t.bg,
+      grid: {left: 52, right: 24, top: 34, bottom: 30},
+      tooltip: {
+        trigger: 'item',
+        backgroundColor: t.card, borderColor: t.line,
+        textStyle: {color: t.text, fontSize: 12},
+        formatter: function(p){
+          var i = p.dataIndex;
+          var head = '<div style="font-weight:600;margin-bottom:3px;">' + names[i] + '</div>';
+          if(i === 0) return head + 'BEI ' + a.toFixed(1) + 'bp<br/><span style="opacity:.7">' + w.from + '</span>';
+          if(i === 3) return head + 'BEI ' + c.toFixed(1) + 'bp<br/><span style="opacity:.7">' + w.to + '</span>';
+          if(i === 1) return head + '名义 10Y：' + (w.nom0/100).toFixed(2) + '% → ' + (w.nom1/100).toFixed(2) +
+                            '%（' + fmtBp(w.nom1 - w.nom0) + 'bp）<br/>对 BEI 贡献：' + fmtBp(w.leg_nom) + 'bp';
+          return head + 'TIPS 实际 10Y：' + (w.real0/100).toFixed(2) + '% → ' + (w.real1/100).toFixed(2) +
+                 '%（' + fmtBp(w.real1 - w.real0) + 'bp）<br/>对 BEI 贡献：' + fmtBp(w.leg_real) + 'bp';
+        }
+      },
+      xAxis: {
+        type: 'category', data: names,
+        axisLine: {lineStyle: {color: t.line}},
+        axisTick: {show: false},
+        axisLabel: {color: t.text3, fontSize: 11}
+      },
+      yAxis: {
+        type: 'value', name: 'bp', nameTextStyle: {color: t.text3, fontSize: 10},
+        min: Math.floor(lo - pad), max: Math.ceil(hi + pad),
+        axisLine: {show: false}, axisTick: {show: false},
+        axisLabel: {color: t.text3, fontSize: 10},
+        splitLine: {lineStyle: {color: t.splitline}}
+      },
+      series: [
+        {name: 'base', type: 'bar', stack: 'wf', silent: true, barWidth: '46%',
+         data: base, itemStyle: {color: 'transparent'}, emphasis: {disabled: true}},
+        {name: 'value', type: 'bar', stack: 'wf', barWidth: '46%',
+         data: size.map(function(v, i){
+           return {value: v, itemStyle: {color: colors[i], borderRadius: 2}};
+         }),
+         label: {show: true, position: 'top', distance: 6, color: t.text2, fontSize: 11,
+                 formatter: function(p){ return texts[p.dataIndex]; }},
+         emphasis: {focus: 'series'}}
+      ]
+    };
+  }
+
+  window.renderWaterfall = function(el, data, key){
+    if(!el || !data || !data.windows || !data.windows.length) return;
+    var k = key || el.getAttribute('data-wf-key') || data.default;
+    var w = null;
+    data.windows.forEach(function(x){ if(x.key === k) w = x; });
+    if(!w) w = data.windows[0];
+    el.setAttribute('data-wf-key', w.key);
+
+    var chart = wfCharts[el.id];
+    if(!chart || (chart.isDisposed && chart.isDisposed())){
+      if(chart){ try{ chart.dispose(); }catch(e){} }
+      chart = echarts.init(el, null, {renderer:'canvas'});
+      wfCharts[el.id] = chart;
+      chartInstances.push(chart);
+      window.addEventListener('resize', function(){ chart.resize(); });
+    }
+    chart.setOption(wfOption(w, data), true);
+
+    // 同步卡片里的动态口径行
+    var note = document.getElementById(el.id + '-note');
+    if(note){
+      note.innerHTML = '区间 ' + md(w.from) + ' → ' + md(w.to) +
+        '：名义 ' + fmtBp(w.nom1 - w.nom0) + 'bp · 实际 ' + fmtBp(w.real1 - w.real0) + 'bp · ' +
+        'BEI ' + fmtBp(w.bei1 - w.bei0) + 'bp（其中名义腿 ' + fmtBp(w.leg_nom) +
+        '、实际腿 ' + fmtBp(w.leg_real) + '）';
+    }
+    return chart;
+  };
+
   // 点击图表卡片，弹出全屏模态框放大展示，支持拖动范围缩放
   var modalChart = null;
   function closeModal(){
@@ -334,18 +435,35 @@
     document.querySelectorAll('.chart-card').forEach(function(card){
       var box = card.querySelector('.chart-box');
       if(!box) return;
+      if(card.hasAttribute('data-nozoom')) return;   // 瀑布图等不参与放大
       var id = box.id;
       card.classList.add('zoomable');
       card.addEventListener('click', function(ev){
         // 点击 dataZoom slider 手柄时不触发放大
         if(ev.target && ev.target.closest && ev.target.closest('.echarts-datanone')) return;
         var data = window.__CHARTS && window.__CHARTS[id];
-        if(!data) return;
+        if(!data || data.kind === 'waterfall') return;
         var t = card.querySelector('.c-title');
         var s = card.querySelector('.c-sub');
         window.openChartModal(card, data,
           t ? t.textContent : '',
           s ? s.textContent : '');
+      });
+    });
+    // 瀑布图窗口切换（近1周/1月/3月/6月/1年）
+    document.querySelectorAll('.wf-tabs').forEach(function(box){
+      box.addEventListener('click', function(ev){
+        var btn = ev.target && ev.target.closest ? ev.target.closest('.wf-tab') : null;
+        if(!btn) return;
+        ev.stopPropagation();
+        box.querySelectorAll('.wf-tab').forEach(function(x){ x.classList.toggle('active', x === btn); });
+        var id = box.getAttribute('data-target');
+        var el = document.getElementById(id);
+        var rec = window.__WATERFALLS && window.__WATERFALLS[id];
+        if(el && rec){
+          rec.key = btn.getAttribute('data-key');
+          window.renderWaterfall(el, rec.data, rec.key);
+        }
       });
     });
     // 关闭模态框
@@ -375,7 +493,18 @@
         if(window.__CHARTS){
           Object.keys(window.__CHARTS).forEach(function(id){
             var el = document.getElementById(id);
-            if(el) window.renderLineChart(el, window.__CHARTS[id]);
+            var d = window.__CHARTS[id];
+            if(!el || !d || d.kind === 'waterfall') return;
+            window.renderLineChart(el, d);
+          });
+        }
+        if(window.__WATERFALLS){
+          Object.keys(window.__WATERFALLS).forEach(function(id){
+            var el = document.getElementById(id);
+            if(el){
+              var rec = window.__WATERFALLS[id];
+              window.renderWaterfall(el, rec.data, el.getAttribute('data-wf-key') || rec.key);
+            }
           });
         }
         if(window.__SCATTERS){

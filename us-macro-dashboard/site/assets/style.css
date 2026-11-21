@@ -148,6 +148,17 @@ a{color:inherit;text-decoration:none}
 .chart-card.zoomable:hover .c-zoom{opacity:1;color:var(--purple)}
 .chart-box{height:280px;width:100%}
 .chart-box.tall{height:360px}
+.chart-card.wide{grid-column:1/-1}
+/* 瀑布图（BEI 归因）：窗口切换按钮 + 动态口径行 */
+.wf-tabs{display:flex;gap:6px;margin:2px 0 6px;flex-wrap:wrap}
+.wf-tab{
+  font-family:inherit;font-size:11px;line-height:1;padding:5px 10px;border-radius:999px;
+  border:1px solid var(--line);background:transparent;color:var(--text3);cursor:pointer;transition:all .15s;
+}
+.wf-tab:hover{color:var(--text2);border-color:var(--line2)}
+.wf-tab.active{background:var(--card2);color:var(--text);border-color:var(--line2);font-weight:600}
+.wf-note{font-size:11px;color:var(--text2);margin:2px 0 6px;font-variant-numeric:tabular-nums}
+.chart-box.wf{height:300px}
 
 /* ===== 图表放大模态框 ===== */
 .chart-modal{position:fixed;inset:0;z-index:1000;display:none}

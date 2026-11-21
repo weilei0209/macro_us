@@ -347,6 +347,48 @@ def align_series(dates, series):
     return [m.get(d) for d in dates]
 
 
+# BEI 变动归因的观察窗口：(key, 显示名, 交易日数)
+BEI_ATTR_WINDOWS = [
+    ("1w", "近 1 周", 5),
+    ("1m", "近 1 月", 21),
+    ("3m", "近 3 月", 63),
+    ("6m", "近 6 月", 126),
+    ("1y", "近 1 年", 252),
+]
+
+
+def bei_attribution(series_data):
+    """BEI 变动归因（瀑布图数据）：ΔBEI = Δ名义 − Δ实际。
+    名义腿贡献 = Δ名义10Y，实际腿贡献 = −ΔTIPS实际10Y，两者之和恒等于 ΔBEI。
+    两腿必须取同一交易日收盘，故先用 us10y ∩ tips10y 的日期交集。
+    输出多窗口，前端按按钮切换。"""
+    nom = {p["date"]: p["value"] for p in series_data.get("us10y", []) if p["value"] is not None}
+    real = {p["date"]: p["value"] for p in series_data.get("tips10y", []) if p["value"] is not None}
+    dates = sorted(set(nom) & set(real))
+    if len(dates) < 6:
+        return None
+    windows = []
+    i1 = len(dates) - 1
+    for key, label, n in BEI_ATTR_WINDOWS:
+        i0 = max(0, i1 - n)
+        if i0 >= i1:
+            continue
+        d0, d1 = dates[i0], dates[i1]
+        n0, n1 = round(nom[d0] * 100, 1), round(nom[d1] * 100, 1)
+        r0, r1 = round(real[d0] * 100, 1), round(real[d1] * 100, 1)
+        windows.append({
+            "key": key, "label": label, "from": d0, "to": d1,
+            "nom0": n0, "nom1": n1, "real0": r0, "real1": r1,
+            "bei0": round(n0 - r0, 1), "bei1": round(n1 - r1, 1),
+            "leg_nom": round(n1 - n0, 1),        # 名义腿对 BEI 的贡献
+            "leg_real": round(r0 - r1, 1),       # 实际腿对 BEI 的贡献（= −Δ实际）
+        })
+    if not windows:
+        return None
+    return {"kind": "waterfall", "unit": "bp", "default": "1m" if len(windows) > 1 else windows[0]["key"],
+            "windows": windows}
+
+
 def goods_vs_payrolls_chart(series_data):
     """工业新增就业 vs 非农新增就业：双 Y 轴（左=非农新增，右=工业新增）。
     两个轴各自独立缩放，使均值视觉接近，突出周期波动的同步/领先关系。"""
@@ -369,6 +411,13 @@ def goods_vs_payrolls_chart(series_data):
 def build_chart(series_data, chart):
     cid = chart["id"]
     rule = freq_rule_for_chart(chart)
+    # BEI 变动归因瀑布：把 ΔBEI 拆成名义腿 / 实际腿（可切换观察窗口）
+    if cid in ("inf_bei_attr", "td_bei_attr"):
+        d = bei_attribution(series_data)
+        if not d:
+            return {"dates": [], "series": []}
+        d["release_rule"] = "两腿取同一交易日收盘 · BEI = 名义 − 实际"
+        return d
     # 非农新增 + 修订对比（实线最新值 + 虚线初值/1次修正）
     if cid == "emp_payrolls":
         return payrolls_revision_chart(series_data)
@@ -558,6 +607,7 @@ THEME_CHARTS = {
         {"id": "inf_housing_annual", "title": "住房通胀同比：新租约 vs CPI 租金", "sub": "新租约租金（ZORI）领先 CPI 租金约 12 个月，看传导滞后", "series": ["zori", "cpi_rent"], "color": "#e5484d"},
         {"id": "inf_5y5y", "title": "5y5y 远期通胀补偿", "sub": "最严格的锚定指标", "series": ["fwd5y5y"], "color": "#f5a623"},
         {"id": "inf_bei", "title": "10Y 盈亏平衡通胀率", "sub": "市场定价的通胀预期", "series": ["bei10y"], "color": "#8b5cf6"},
+        {"id": "inf_bei_attr", "title": "BEI 变动归因：名义腿 vs 实际腿", "sub": "ΔBEI = Δ名义 − Δ实际。实际利率上行会等额压低 BEI，瀑布图看是谁在主导", "series": ["us10y", "tips10y"], "color": "#8b5cf6", "wide": True},
     ],
     "growth": [
         {"id": "gro_gdp", "title": "实际 GDP", "sub": "季频，环比折年看边际", "series": ["gdp_real"], "color": "#3b82f6"},
@@ -655,6 +705,7 @@ TOPIC_DETAIL_CHARTS = {
     "inflation_anchor": [
         {"id": "td_fwd5y5y", "title": "5y5y 远期通胀补偿", "sub": "最严格的锚定指标，偏离近1年均值超 50bp 视为动摇", "series": ["fwd5y5y"], "color": "#f5a623"},
         {"id": "td_bei", "title": "10Y 盈亏平衡通胀率", "sub": "市场定价的通胀预期", "series": ["bei10y"], "color": "#8b5cf6"},
+        {"id": "td_bei_attr", "title": "BEI 变动归因：名义腿 vs 实际腿", "sub": "ΔBEI = Δ名义 − Δ实际，看下跌是通胀补偿降温还是实际利率挤压", "series": ["us10y", "tips10y"], "color": "#8b5cf6", "wide": True},
     ],
     "labor_freeze": [
         {"id": "td_vu", "title": "V/U 比率", "sub": "岗位空缺 / 失业人数，领先工资通胀约 2 季度", "series": [], "color": "#e5484d"},
@@ -789,32 +840,58 @@ def metric_cards(groups, series_data, cats):
 
 def charts_html(chart_defs, series_data, data_map=None):
     """渲染一组图表卡片的 HTML。若传入 data_map（dict），则把图表数据累积进去，
-    由调用方最后统一用 charts_script(data_map) 输出渲染脚本（避免多次定义 window.__CHARTS 互相覆盖）。"""
+    由调用方最后统一用 charts_script(data_map) 输出渲染脚本（避免多次定义 window.__CHARTS 互相覆盖）。
+    瀑布图（kind=waterfall）额外渲染窗口切换按钮 + 动态口径行，且不参与点击放大。"""
     boxes = []
     for c in chart_defs:
+        d = build_chart(series_data, c) if data_map is not None else None
         note = chart_meta(c)
         note_html = f'<div class="c-meta">{esc(note)}</div>' if note else ''
+        card_cls = "chart-card" + (" wide" if c.get("wide") else "")
+        box_cls = "chart-box"
+        extra_html = ''
+        nozoom = ''
+        if d and d.get("kind") == "waterfall":
+            wins = d.get("windows", [])
+            default = d.get("default") or (wins[0]["key"] if wins else "")
+            tabs = "".join(
+                f'<button class="wf-tab{" active" if w["key"] == default else ""}" data-key="{w["key"]}">{esc(w["label"])}</button>'
+                for w in wins
+            )
+            extra_html = (f'<div class="wf-tabs" data-target="{c["id"]}">{tabs}</div>'
+                          f'<div class="wf-note" id="{c["id"]}-note"></div>')
+            box_cls += " wf"
+            nozoom = ' data-nozoom="1"'
         boxes.append(
-            f'<div class="chart-card"><div class="c-title">{esc(c["title"])}'
+            f'<div class="{card_cls}"{nozoom}><div class="c-title">{esc(c["title"])}'
             f'<span class="c-zoom" title="点击放大">⤢</span></div>'
             f'<div class="c-sub">{esc(c["sub"])}</div>'
-            f'{note_html}'
-            f'<div class="chart-box" id="{c["id"]}"></div></div>'
+            f'{note_html}{extra_html}'
+            f'<div class="{box_cls}" id="{c["id"]}"></div></div>'
         )
         if data_map is not None:
-            data_map[c["id"]] = build_chart(series_data, c)
+            data_map[c["id"]] = d
     return '<div class="chart-grid">' + "".join(boxes) + '</div>'
 
 
 def charts_script(data_map):
-    """输出 window.__CHARTS 数据 + 渲染脚本（页面级统一调用一次）。"""
+    """输出 window.__CHARTS 数据 + 渲染脚本（页面级统一调用一次）。
+    瀑布图走 renderWaterfall，其余走 renderLineChart。"""
     js = (
         '<script>\n'
         'window.__CHARTS = ' + json.dumps(data_map, ensure_ascii=False) + ';\n'
         'document.addEventListener("DOMContentLoaded", function(){\n'
         '  Object.keys(window.__CHARTS).forEach(function(id){\n'
         '    var el = document.getElementById(id);\n'
-        '    if(el) window.renderLineChart(el, window.__CHARTS[id]);\n'
+        '    if(!el) return;\n'
+        '    var d = window.__CHARTS[id];\n'
+        '    if(d && d.kind === "waterfall"){\n'
+        '      window.__WATERFALLS = window.__WATERFALLS || {};\n'
+        '      window.__WATERFALLS[id] = {data: d, key: d.default};\n'
+        '      window.renderWaterfall(el, d, d.default);\n'
+        '    } else {\n'
+        '      window.renderLineChart(el, d);\n'
+        '    }\n'
         '  });\n'
         '});\n'
         '</script>\n'
@@ -841,6 +918,8 @@ def chart_meta(chart):
         "inf_core_annual": "来源 BLS · 单位 % · 核心商品=剔除食品能源商品；核心服务=剔除能源服务；超级核心=核心服务再剔住房（按 BLS 相对重要性加权）；均同比",
         "inf_housing": "来源 Zillow / BLS · 单位 % · ZORI 为新挂牌租金（领先），CPI 租金含续约（滞后约 12 个月），两线均月度环比（季调）",
         "inf_housing_annual": "来源 Zillow / BLS · 单位 % · ZORI 为新挂牌租金（领先），CPI 租金含续约（滞后约 12 个月），两线均同比",
+        "inf_bei_attr": "来源 美国财政部 / 美联储 · 单位 bp · BEI = 名义 10Y（DGS10）− TIPS 实际 10Y（DFII10），两腿取同一交易日收盘；实际腿贡献 = −Δ实际；柱色随贡献方向：推高 BEI 为红、压低为绿",
+        "td_bei_attr": "来源 美国财政部 / 美联储 · 单位 bp · BEI = 名义 10Y（DGS10）− TIPS 实际 10Y（DFII10），两腿取同一交易日收盘；实际腿贡献 = −Δ实际；柱色随贡献方向：推高 BEI 为红、压低为绿",
         # 就业页新增
         "emp_diffusion": "来源 BLS · 单位 % · 11 个主要行业环比上升占比（参考 PMI 扩散指数构造，3MMA）",
         "emp_cyclical": "来源 BLS · 单位 千人（月度新增） · 工业新增=制造+建筑+采矿环比增量，双轴对比非农新增的周期性",
