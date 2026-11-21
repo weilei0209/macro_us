@@ -612,6 +612,28 @@ def build_chart(series_data, chart):
                 item["dashed"] = True
             out.append(item)
         return {"dates": dates, "release_rule": rule, "series": out}
+    # 剥洋葱三层的环比折年：GDP / FGDP / PDFP（均为 BEA 季调年化率，口径一致）
+    if cid == "gro_qoq":
+        base = series_points(series_data.get("gdp_qoq", []))
+        dates = base["dates"]
+        layers = [
+            ("GDP 环比折年", "gdp_qoq", "#e5484d", False),
+            ("FGDP 最终销售", "fgdp_qoq", "#f5a623", True),
+            ("PDFP 私营国内最终购买", "pdfp_qoq", "#8b5cf6", False),
+        ]
+        out = []
+        for nm, sid, col, dashed in layers:
+            if sid == "gdp_qoq":
+                vals = base["values"]
+            else:
+                vals = align_series(dates, series_data.get(sid, []))
+            item = {"name": nm, "values": vals, "color": col}
+            if dashed:
+                item["dashed"] = True
+            out.append(item)
+        # 2020 年疫情期 ±35% 会把正常年份压成一条直线，默认从 2021 起并常显缩放滑块
+        return {"dates": dates, "release_rule": rule, "series": out,
+                "zoom_start": "2021-01-01", "show_slider": True}
     names = {"us10y": "10Y", "us2y": "2Y", "tips10y": "r(实际利率)", "gdp_qoq": "g(实际增速)",
              "fwd5y5y": "5y5y", "on_rrp": "ON RRP", "bei10y": "BEI 10Y", "unrate": "失业率",
              "payrolls": "非农存量", "claims": "首申", "cpi": "CPI", "pcepi": "PCE",
@@ -666,8 +688,8 @@ THEME_CHARTS = {
     ],
     "growth": [
         {"id": "gro_gdp", "title": "实际 GDP：剥洋葱三层（GDP / FGDP / PDFP）", "sub": "逐级剔除库存变化 → 净出口与政府支出，越往里越接近真实内需；水平值（十亿链式美元）", "series": ["gdp_real", "fgdp", "pdfp"], "color": "#3b82f6", "wide": True},
-        {"id": "gro_qoq", "title": "GDP 环比折年", "sub": "增长动能", "series": ["gdp_qoq"], "color": "#e5484d"},
-        {"id": "gro_rg", "title": "r vs g", "sub": "增长化债空间", "series": ["tips10y", "gdp_qoq"], "color": "#3b82f6"},
+        {"id": "gro_qoq", "title": "GDP 环比折年：剥洋葱三层", "sub": "均 BEA 季调折年率。GDP 的摆动常由库存与净出口造成，PDFP 才是内需；默认显示 2021 年起（拖动下方滑块可回看 2020 疫情期）", "series": ["gdp_qoq", "fgdp_qoq", "pdfp_qoq"], "color": "#e5484d", "wide": True},
+        {"id": "gro_rg", "title": "r vs g", "sub": "增长化债空间", "series": ["tips10y", "gdp_qoq"], "color": "#3b82f6", "wide": True},
     ],
     "fiscal": [
         {"id": "fis_rg", "title": "r - g 化债空间", "sub": "实际利率 vs 实际增速", "series": ["tips10y", "gdp_qoq"], "color": "#3b82f6"},
@@ -981,6 +1003,7 @@ def chart_meta(chart):
         "inf_bei_attr": "来源 美国财政部 / 美联储 · 单位 bp · BEI = 名义 10Y（DGS10）− TIPS 实际 10Y（DFII10），两腿取同一交易日收盘；实际腿贡献 = −Δ实际；柱色随贡献方向：推高 BEI 为红、压低为绿",
         "td_bei_attr": "来源 美国财政部 / 美联储 · 单位 bp · BEI = 名义 10Y（DGS10）− TIPS 实际 10Y（DFII10），两腿取同一交易日收盘；实际腿贡献 = −Δ实际；柱色随贡献方向：推高 BEI 为红、压低为绿",
         "gro_gdp": "来源 BEA 经济分析局 · 单位 十亿链式 2017 美元 · GDP=总量；FGDP（Final Sales of Domestic Product）=剔除私人库存变化；PDFP（Private Domestic Final Purchases）=再剔净出口与政府支出，即“核心 GDP”。三者水平值之差 = 库存、净出口、政府各自的贡献",
+        "gro_qoq": "来源 BEA 经济分析局 · 单位 %（季调年化率）· 三条均为 BEA 官方环比折年序列，口径一致：GDP（A191RL）→ FGDP 最终销售（A190RL，剔库存）→ PDFP 私营国内最终购买（再剔净出口与政府）。GDP 与 PDFP 的缺口 = 库存+净出口+政府合计对增长的贡献",
         # 就业页新增
         "emp_diffusion": "来源 BLS · 单位 % · 11 个主要行业环比上升占比（参考 PMI 扩散指数构造，3MMA）",
         "emp_cyclical": "来源 BLS · 单位 千人（月度新增） · 工业新增=制造+建筑+采矿环比增量，双轴对比非农新增的周期性",

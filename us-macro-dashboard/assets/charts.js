@@ -144,7 +144,9 @@
     }
     var option = {
       backgroundColor:THEME.bg,
-      grid:{left: big?64:48, right: data.dual_axis ? (big?72:56) : 20, top:28, bottom: big?64:44},
+      // 带滑块的卡片需要多留底部空间，否则 x 轴标签会贴着滑块、滑块又紧贴画布下沿
+      grid:{left: big?64:48, right: data.dual_axis ? (big?72:56) : 34, top:28,
+            bottom: (big || data.show_slider === true) ? 66 : 44},
       tooltip:{trigger:'axis',
         backgroundColor:THEME.card, borderColor:THEME.line,
         textStyle:{color:THEME.text, fontSize:12},
@@ -160,8 +162,8 @@
       // 拖拽/滚轮缩放：周期较长时自由拖动范围
       dataZoom:[
         Object.assign({ type:'inside', xAxisIndex:0, filterMode:'none', zoomOnMouseWheel:true, moveOnMouseMove:true }, zoomCfg),
-        Object.assign({ type:'slider', xAxisIndex:0, show:big, height: big?22:18, bottom: big?10:6,
-          borderColor:THEME.line, backgroundColor:'transparent',
+        Object.assign({ type:'slider', xAxisIndex:0, show: big || data.show_slider === true, height: big?22:20, bottom: big?10:8,
+          borderColor:THEME.line, backgroundColor:THEME.splitline,
           fillerColor:'rgba(139,92,246,0.15)',
           handleStyle:{color:THEME.purple}, moveHandleStyle:{color:THEME.purple},
           textStyle:{color:THEME.text3, fontSize:10},
