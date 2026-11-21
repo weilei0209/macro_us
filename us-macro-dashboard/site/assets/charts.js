@@ -248,7 +248,7 @@
           return '<div style="font-weight:600;margin-bottom:2px;">'+p.seriesName+'</div>'+
                  (data.xName||'x')+'：'+pt[0]+'<br/>'+
                  (data.yName||'y')+'：'+Number(pt[1]).toFixed(2)+'<br/>'+
-                 (p.data[2] ? '统计期：'+p.data[2] : '');
+                 (p.data[2] ? '统计期：'+formatPeriod(p.data[2], false) : '');
         }
       },
       legend:{top:0, right:0, textStyle:{color:THEME.text2, fontSize:11}, itemWidth:12, itemHeight:8},

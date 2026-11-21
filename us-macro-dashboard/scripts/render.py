@@ -1274,7 +1274,8 @@ def phillips_scatter_block(series_data):
     latest = data.get("latest")
     latest_txt = ""
     if latest:
-        latest_txt = f'当前：失业率 {latest[0]}% · 核心 CPI 同比 {latest[1]}%'
+        # latest[2] 是数据所属月份（如 2026-10-01），显式标出，避免误读为发布日期
+        latest_txt = f'当前（{latest[2][:4]}年{int(latest[2][5:7])}月数据）：失业率 {latest[0]}% · 核心 CPI 同比 {latest[1]}%'
     return f'''<div class="chart-card" style="margin-bottom:14px">
   <div class="c-title">菲利普斯曲线（非线性）</div>
   <div class="c-sub">失业率 × 核心 CPI 同比 · 剔除 2020 疫情 · {latest_txt}</div>
