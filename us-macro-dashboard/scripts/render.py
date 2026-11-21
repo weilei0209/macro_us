@@ -257,6 +257,8 @@ def freq_rule_for_chart(chart):
             sids = ["jolts_open"]  # 滞后最严重的那个决定"最新一期"的错位感
         elif cid in ("chart_infl_yoy", "inf_yoy", "td_yoy", "inf_yoy_annual"):
             sids = ["cpi"]
+        elif cid == "inf_bei_slope":
+            sids = ["bei10y"]
     # 多序列且频率不一致时，标注混合频率说明
     freqs = []
     for sid in sids:
@@ -366,6 +368,20 @@ BEI_ATTR_WINDOWS = [
 ]
 
 
+def bei_slope_series(series_data):
+    """前 5 年通胀溢价 = BEI10Y − 5y5y（单位 bp）。
+    含义：10 年盈亏平衡率（前 10 年平均）减去后 5 年远期（5y5y），
+    量的是"前 5 年 vs 后 5 年"的相对高低——正值代表市场认为前 5 年通胀补偿更高（曲线前高后低）。
+    线性近似下 BEI10 ≈ (π_5y + 5y5y)/2，故本差值 = (π_5y − 5y5y)/2，只反映一半的期限缺口。"""
+    bei = {p["date"]: p["value"] for p in series_data.get("bei10y", []) if p["value"] is not None}
+    fwd = {p["date"]: p["value"] for p in series_data.get("fwd5y5y", []) if p["value"] is not None}
+    dates = sorted(set(bei) & set(fwd))
+    pts = [(d, round((bei[d] - fwd[d]) * 100, 1)) for d in dates if d >= CHART_HISTORY_START]
+    if len(pts) > MAX_POINTS:
+        pts = pts[-MAX_POINTS:]
+    return {"dates": [p[0] for p in pts], "values": [p[1] for p in pts]}
+
+
 def bei_attribution(series_data):
     """BEI 变动归因（瀑布图数据）：ΔBEI = Δ名义 − Δ实际。
     名义腿贡献 = Δ名义10Y，实际腿贡献 = −ΔTIPS实际10Y，两者之和恒等于 ΔBEI。
@@ -427,6 +443,13 @@ def build_chart(series_data, chart):
             return {"dates": [], "series": []}
         d["release_rule"] = "两腿取同一交易日收盘 · BEI = 名义 − 实际"
         return d
+    # 前 5 年通胀溢价：BEI10Y − 5y5y（bp），带 0 轴参考线
+    if cid == "inf_bei_slope":
+        d = bei_slope_series(series_data)
+        # 2008 年 TIPS 流动性冲击把该差值打到 −264bp，默认视图从 2013 年起，避免近十年被压成一条直线
+        return {"dates": d["dates"], "release_rule": rule, "mark_line": 0, "zoom_start": "2013-01-01",
+                "unit": "bp", "day_format": True,
+                "series": [{"name": "BEI 10Y − 5y5y", "values": d["values"], "color": "#f5a623"}]}
     # 非农新增 + 修订对比（实线最新值 + 虚线初值/1次修正）
     if cid == "emp_payrolls":
         return payrolls_revision_chart(series_data)
@@ -616,6 +639,7 @@ THEME_CHARTS = {
         {"id": "inf_housing_annual", "title": "住房通胀同比：新租约 vs CPI 租金", "sub": "新租约租金（ZORI）领先 CPI 租金约 12 个月，看传导滞后", "series": ["zori", "cpi_rent"], "color": "#e5484d"},
         {"id": "inf_5y5y", "title": "5y5y 远期通胀补偿", "sub": "最严格的锚定指标", "series": ["fwd5y5y"], "color": "#f5a623"},
         {"id": "inf_bei", "title": "10Y 盈亏平衡通胀率", "sub": "市场定价的通胀预期", "series": ["bei10y"], "color": "#8b5cf6"},
+        {"id": "inf_bei_slope", "title": "前 5 年通胀溢价：BEI10Y − 5y5y", "sub": "10 年盈亏平衡率减后 5 年远期（5y5y）。正值=前 5 年补偿高于后 5 年（曲线前高后低），负值=前低后高", "series": [], "color": "#f5a623", "wide": True},
         {"id": "inf_bei_attr", "title": "BEI 变动归因：名义腿 vs 实际腿", "sub": "ΔBEI = Δ名义 − Δ实际。实际利率上行会等额压低 BEI，瀑布图看是谁在主导", "series": ["us10y", "tips10y"], "color": "#8b5cf6", "wide": True},
     ],
     "growth": [
@@ -931,6 +955,7 @@ def chart_meta(chart):
         "inf_core_annual": "来源 BLS · 单位 % · 核心商品=剔除食品能源商品；核心服务=剔除能源服务；超级核心=核心服务再剔住房（按 BLS 相对重要性加权）；均同比",
         "inf_housing": "来源 Zillow / BLS · 单位 % · ZORI 为新挂牌租金（领先），CPI 租金含续约（滞后约 12 个月），两线均月度环比（季调）",
         "inf_housing_annual": "来源 Zillow / BLS · 单位 % · ZORI 为新挂牌租金（领先），CPI 租金含续约（滞后约 12 个月），两线均同比",
+        "inf_bei_slope": "来源 美联储（T10YIE / T5YIFR）· 单位 bp · BEI10Y − 5y5y；线性近似下 = (前 5 年 BEI − 后 5 年 5y5y) ÷ 2，只反映一半的期限缺口；0 轴以上 = 前高后低、以下 = 前低后高",
         "inf_bei_attr": "来源 美国财政部 / 美联储 · 单位 bp · BEI = 名义 10Y（DGS10）− TIPS 实际 10Y（DFII10），两腿取同一交易日收盘；实际腿贡献 = −Δ实际；柱色随贡献方向：推高 BEI 为红、压低为绿",
         "td_bei_attr": "来源 美国财政部 / 美联储 · 单位 bp · BEI = 名义 10Y（DGS10）− TIPS 实际 10Y（DFII10），两腿取同一交易日收盘；实际腿贡献 = −Δ实际；柱色随贡献方向：推高 BEI 为红、压低为绿",
         # 就业页新增

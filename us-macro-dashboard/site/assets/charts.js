@@ -57,13 +57,22 @@
     return y + '年' + parseInt(mo,10) + '月';
   }
 
-  function tooltipFormatter(params, releaseRule){
+  // 日频序列：tooltip 精确到日，避免"2026年11月"掩盖具体哪一天
+  function formatDay(v){
+    var m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? (m[1] + '年' + parseInt(m[2],10) + '月' + parseInt(m[3],10) + '日') : v;
+  }
+
+  function tooltipFormatter(params, releaseRule, unit, dayFmt){
     if(!params || !params.length) return '';
     var isQuarterly = releaseRule && releaseRule.indexOf('统计季度') !== -1;
-    var period = formatPeriod(params[0].axisValue, isQuarterly);
+    var period = dayFmt ? formatDay(params[0].axisValue) : formatPeriod(params[0].axisValue, isQuarterly);
     var s = '<div style="font-weight:600;margin-bottom:2px;">统计期：' + period + '</div>';
     params.forEach(function(p){
-      var v = (p.value==null||p.value==='')?'—':Number(p.value).toFixed(2);
+      var v;
+      if(p.value==null || p.value==='') v = '—';
+      else if(unit === 'bp') v = fmtBp(p.value) + 'bp';   // 差值类图表带符号，便于分辨正负
+      else v = Number(p.value).toFixed(2);
       s += p.marker + p.seriesName + '：' + v + '<br/>';
     });
     if(releaseRule){
@@ -128,7 +137,7 @@
       tooltip:{trigger:'axis',
         backgroundColor:THEME.card, borderColor:THEME.line,
         textStyle:{color:THEME.text, fontSize:12},
-        formatter:function(params){ return tooltipFormatter(params, data.release_rule); }
+        formatter:function(params){ return tooltipFormatter(params, data.release_rule, data.unit, data.day_format === true); }
       },
       legend:{top:0, right:0, textStyle:{color:THEME.text2, fontSize:fs}, itemWidth:14, itemHeight:8},
       xAxis:{type:'category', data:data.dates, boundaryGap:false,
@@ -149,6 +158,15 @@
       ]
     };
     option.series = series;
+    // 可选参考线（如利差/差值的 0 轴）：data.mark_line = 0
+    if(data.mark_line != null && series.length){
+      series[0].markLine = {
+        silent: true, symbol: 'none', animation: false,
+        data: [{yAxis: data.mark_line}],
+        lineStyle: {color: THEME.text3, type: 'dashed', width: 1, opacity: 0.9},
+        label: {show: false}
+      };
+    }
     return option;
   }
 
@@ -216,7 +234,10 @@
     opts = opts || {};
     if(!data || !data.dates || data.dates.length < 2) return;
     var chart = echarts.init(el, null, {renderer:'canvas'});
-    chart.setOption(buildLineOption(data, opts.big === true, opts.zoomStartIndex));
+    // 默认缩放起点：优先用调用方传入的索引，其次用数据里的 zoom_start 日期
+    var zi = opts.zoomStartIndex;
+    if(zi == null && data.zoom_start) zi = dateToIndex(data.dates, data.zoom_start);
+    chart.setOption(buildLineOption(data, opts.big === true, zi));
     // Y 轴随 X 轴缩放自动适配
     chart.on('datazoom', function(){ fitYAxis(chart, data); });
     // 初始化后立即按当前可见区间拟合一次 Y 轴（避免默认 0 起/异常极值）
