@@ -65,6 +65,7 @@ FRED_SERIES = {
     "core_goods_cpi":   "CUSR0000SACL1E", # 核心商品 CPI（剔除食品能源商品，季调）
     "core_services_cpi":"CUSR0000SASLE",  # 核心服务 CPI（剔除能源服务，季调）
     "cpi_rent":     "CUSR0000SEHA", # CPI 租金（主要居所租金，季调）
+    "cpi_shelter":  "CUSR0000SAH1", # CPI 住房 Shelter（季调）——仅作计算超级核心的中间量
     "pcepi":        "PCEPI",       # PCE 价格指数
     "pce_core":     "PCEPILFE",    # 核心 PCE
     "pce":          "PCE",         # PCE 名义支出
@@ -251,6 +252,7 @@ RELEASE_CALENDAR = {
     "core_goods_cpi":   ("FRED", "monthly_mid"),
     "core_services_cpi":("FRED", "monthly_mid"),
     "cpi_rent":     ("FRED", "monthly_mid"),
+    "cpi_shelter":  ("FRED", "monthly_mid"),
     "zori":         ("Zillow", "monthly_mid"),
     "cpi_bls":      ("BLS",  "monthly_mid"),
     "cpi_sa":       ("BLS",  "monthly_mid"),
@@ -422,6 +424,21 @@ DIFFUSION_INDUSTRIES = [
 # 六、派生指标计算规则（专题分析的数据基础）
 # 每个派生指标：名称 -> (依赖的原始指标, 计算函数说明)
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# 超级核心通胀（supercore = 核心服务剔除住房）加权口径
+# ---------------------------------------------------------------------------
+# 权重取自 BLS《Relative importance of components in the Consumer Price Indexes》
+# （U.S. city average, December 2025，Table 1 / 2024 weights，CPI-U，占 all items 百分比）。
+# Shelter 是 Services less energy services 的子集，故两者基期相同（1982-1984=100），
+# 可直接加权求差：supercore = (W_S × SASLE − W_H × Shelter) / (W_S − W_H)。
+# 口径说明：这是美联储「supercore」的 CPI 版本（core services ex shelter），
+# 剔除了能源服务与全部住房，比 BLS 官方的 "Services less rent of shelter" 更接近 supercore
+# （后者仍含能源服务）。历史年份权重有漂移，此处统一用最新权重，属近似处理。
+SUPERCORE_WEIGHTS = {
+    "services_less_energy": 60.744,   # Services less energy services
+    "shelter": 35.625,                # Shelter
+}
+
 DERIVED_INDICATORS = {
     "vu_ratio":     {"deps": ["jolts_open", "unrate"], "desc": "V/U 比率 = 岗位空缺数 / 失业人数（需 CLF16OV 与 unrate 推算失业人数）"},
     "payrolls_mom": {"deps": ["payrolls"], "desc": "非农新增 = 非农存量月环比差分"},
@@ -430,6 +447,8 @@ DERIVED_INDICATORS = {
     "core_cpi_yoy": {"deps": ["cpi_core"], "desc": "核心 CPI 同比（剔除食品能源）"},
     "core_goods_yoy": {"deps": ["core_goods_cpi"], "desc": "核心商品 CPI 同比（剔除食品能源商品）"},
     "core_services_yoy": {"deps": ["core_services_cpi"], "desc": "核心服务 CPI 同比（剔除能源服务）"},
+    "cpi_supercore": {"deps": ["core_services_cpi", "cpi_shelter"], "desc": "超级核心通胀指数 = 核心服务剔除住房（按 BLS 相对重要性加权）"},
+    "cpi_supercore_yoy": {"deps": ["cpi_supercore"], "desc": "超级核心通胀同比（美联储关注的服务业内生通胀）"},
     "cpi_rent_yoy": {"deps": ["cpi_rent"], "desc": "CPI 租金同比（主要居所租金）"},
     "zori_yoy": {"deps": ["zori"], "desc": "ZORI 新租约租金同比（Zillow 挂牌租金，领先 CPI 租金约 12 个月）"},
     "pce_yoy":      {"deps": ["pcepi"], "desc": "PCE 同比"},

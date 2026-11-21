@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(BASE_DIR, "scripts"))
 
 from indicators import (FRED_SERIES, FRED_META, BLS_SERIES, RELEASE_CALENDAR,
                         DERIVED_INDICATORS, TOPIC_RULES, INDICATOR_META,
-                        SCALED_INDICATORS, DIFFUSION_INDUSTRIES)
+                        SCALED_INDICATORS, DIFFUSION_INDUSTRIES, SUPERCORE_WEIGHTS)
 from fetcher import (FredClient, BlsClient, BeaClient, CensusClient,
                      load_cache, save_cache, which_indicators_due,
                      cache_path, fetch_zillow_zori)
@@ -392,6 +392,25 @@ def main():
         else:
             log(f"  Zillow ZORI 抓取失败且无缓存: {e}")
 
+    # 3.5 超级核心通胀（supercore = 核心服务剔除住房）
+    # 用 BLS 相对重要性加权求差：supercore = (W_S×核心服务 − W_H×住房)/(W_S−W_H)
+    # 两个分项基期同为 1982-1984=100，故加权结果仍是同基期指数，可直接算同比/环比。
+    sasle = all_series.get("core_services_cpi", [])
+    shelter = all_series.get("cpi_shelter", [])
+    w_s = SUPERCORE_WEIGHTS["services_less_energy"]
+    w_h = SUPERCORE_WEIGHTS["shelter"]
+    net_w = w_s - w_h
+    if sasle and shelter and net_w > 0:
+        smap = {p["date"]: p["value"] for p in sasle if p["value"] is not None}
+        hmap = {p["date"]: p["value"] for p in shelter if p["value"] is not None}
+        sup_pts = [{"date": d, "value": round((w_s * smap[d] - w_h * hmap[d]) / net_w, 3)}
+                   for d in sorted(set(smap) & set(hmap))]
+        if sup_pts:
+            all_series["cpi_supercore"] = sup_pts
+            log(f"  派生 cpi_supercore（核心服务剔住房）: {len(sup_pts)} 点, 最新 {sup_pts[-1]['date']}")
+    else:
+        log("  跳过 cpi_supercore：core_services_cpi 或 cpi_shelter 缺失")
+
     # 4. 计算派生指标
     derived = {}
     # V/U 比率 = JOLTS空缺 / 失业人数；失业人数 = 失业率 * 劳动力
@@ -423,6 +442,7 @@ def main():
                      ("cpi_core", "core_cpi_yoy"), ("pce_core", "core_pce_yoy"),
                      ("core_goods_cpi", "core_goods_yoy"),
                      ("core_services_cpi", "core_services_yoy"),
+                     ("cpi_supercore", "cpi_supercore_yoy"),
                      ("cpi_rent", "cpi_rent_yoy"),
                      ("zori", "zori_yoy")]:
         s = all_series.get(src, [])
