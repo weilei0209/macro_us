@@ -590,6 +590,28 @@ def build_chart(series_data, chart):
             {"name": "雇佣成本指数 ECI 同比", "values": eci_aligned, "color": "#8b5cf6",
              "showSymbol": True, "connectNulls": True},
         ]}
+    # 剥洋葱三层：实际 GDP → 最终销售（剔库存）→ 私营国内最终购买（再剔净出口+政府）
+    if cid == "gro_gdp":
+        base = series_points(series_data.get("gdp_real", []))
+        dates = base["dates"]
+        layers = [
+            ("实际 GDP", "gdp_real", "#3b82f6", False),
+            # GDP 与最终销售只差库存变化（通常 0.3% 以内），实线会完全盖住，用虚线让缺口可见
+            ("FGDP 最终销售", "fgdp", "#f5a623", True),
+            ("PDFP 私营国内最终购买", "pdfp", "#8b5cf6", False),
+        ]
+        out = []
+        for nm, sid, col, dashed in layers:
+            if sid == "gdp_real":
+                vals = base["values"]
+            else:
+                # 各序列季度齐全但首发时间/修订节奏不同，必须按日期对齐，不能按索引配对
+                vals = align_series(dates, series_data.get(sid, []))
+            item = {"name": nm, "values": vals, "color": col}
+            if dashed:
+                item["dashed"] = True
+            out.append(item)
+        return {"dates": dates, "release_rule": rule, "series": out}
     names = {"us10y": "10Y", "us2y": "2Y", "tips10y": "r(实际利率)", "gdp_qoq": "g(实际增速)",
              "fwd5y5y": "5y5y", "on_rrp": "ON RRP", "bei10y": "BEI 10Y", "unrate": "失业率",
              "payrolls": "非农存量", "claims": "首申", "cpi": "CPI", "pcepi": "PCE",
@@ -643,7 +665,7 @@ THEME_CHARTS = {
         {"id": "inf_bei_attr", "title": "BEI 变动归因：名义腿 vs 实际腿", "sub": "ΔBEI = Δ名义 − Δ实际。实际利率上行会等额压低 BEI，瀑布图看是谁在主导", "series": ["us10y", "tips10y"], "color": "#8b5cf6", "wide": True},
     ],
     "growth": [
-        {"id": "gro_gdp", "title": "实际 GDP", "sub": "季频，环比折年看边际", "series": ["gdp_real"], "color": "#3b82f6"},
+        {"id": "gro_gdp", "title": "实际 GDP：剥洋葱三层（GDP / FGDP / PDFP）", "sub": "逐级剔除库存变化 → 净出口与政府支出，越往里越接近真实内需；水平值（十亿链式美元）", "series": ["gdp_real", "fgdp", "pdfp"], "color": "#3b82f6", "wide": True},
         {"id": "gro_qoq", "title": "GDP 环比折年", "sub": "增长动能", "series": ["gdp_qoq"], "color": "#e5484d"},
         {"id": "gro_rg", "title": "r vs g", "sub": "增长化债空间", "series": ["tips10y", "gdp_qoq"], "color": "#3b82f6"},
     ],
@@ -958,6 +980,7 @@ def chart_meta(chart):
         "inf_bei_slope": "来源 美联储（T10YIE / T5YIFR）· 单位 bp · BEI10Y − 5y5y；线性近似下 = (前 5 年 BEI − 后 5 年 5y5y) ÷ 2，只反映一半的期限缺口；0 轴以上 = 前高后低、以下 = 前低后高",
         "inf_bei_attr": "来源 美国财政部 / 美联储 · 单位 bp · BEI = 名义 10Y（DGS10）− TIPS 实际 10Y（DFII10），两腿取同一交易日收盘；实际腿贡献 = −Δ实际；柱色随贡献方向：推高 BEI 为红、压低为绿",
         "td_bei_attr": "来源 美国财政部 / 美联储 · 单位 bp · BEI = 名义 10Y（DGS10）− TIPS 实际 10Y（DFII10），两腿取同一交易日收盘；实际腿贡献 = −Δ实际；柱色随贡献方向：推高 BEI 为红、压低为绿",
+        "gro_gdp": "来源 BEA 经济分析局 · 单位 十亿链式 2017 美元 · GDP=总量；FGDP（Final Sales of Domestic Product）=剔除私人库存变化；PDFP（Private Domestic Final Purchases）=再剔净出口与政府支出，即“核心 GDP”。三者水平值之差 = 库存、净出口、政府各自的贡献",
         # 就业页新增
         "emp_diffusion": "来源 BLS · 单位 % · 11 个主要行业环比上升占比（参考 PMI 扩散指数构造，3MMA）",
         "emp_cyclical": "来源 BLS · 单位 千人（月度新增） · 工业新增=制造+建筑+采矿环比增量，双轴对比非农新增的周期性",

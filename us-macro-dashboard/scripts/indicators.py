@@ -76,6 +76,8 @@ FRED_SERIES = {
     "gdp_real":     "GDPC1",       # 实际 GDP（季）
     "gdp_qoq":      "A191RL1Q225SBEA", # 实际 GDP 环比折年
     "gdp_pot":      "GDPPOT",      # 潜在 GDP（季）
+    "fgdp":         "FINSLC1",     # 实际最终销售（= 实际 GDP 剔库存变化，季）
+    "pdfp":         "LB0000031Q020SBEA", # 实际私营国内最终购买（季）
     "gdi":          "A261RX1Q020SBEA", # 实际 GDI（季）
     "inv_private":  "GPDI",        # 私人投资（季）
     "retail":       "RRSFS",       # 实际零售销售（月）
@@ -143,6 +145,8 @@ FRED_META = {
     "gdp_real":   ("实际 GDP", "增长"),
     "gdp_qoq":    ("实际 GDP 环比折年", "增长"),
     "gdp_pot":    ("潜在 GDP", "增长"),
+    "fgdp":       ("实际最终销售", "增长"),
+    "pdfp":       ("实际私营国内最终购买", "增长"),
     "gdi":        ("实际 GDI", "增长"),
     "inv_private":("私人投资", "增长"),
     "retail":     ("实际零售销售", "消费"),
@@ -276,6 +280,8 @@ RELEASE_CALENDAR = {
     "gdp_real":     ("FRED", "quarterly"),
     "gdp_qoq":      ("FRED", "quarterly"),
     "gdp_pot":      ("FRED", "quarterly"),
+    "fgdp":         ("FRED", "quarterly"),
+    "pdfp":         ("FRED", "quarterly"),
     "gdi":          ("FRED", "quarterly"),
     "inv_private":  ("FRED", "quarterly"),
     "eci_wages":    ("BLS",  "quarterly"),
@@ -390,6 +396,8 @@ INDICATOR_META = {
     "gdp_real":     {"source": "BEA 经济分析局", "unit": "十亿美元", "scale": 1},
     "gdp_qoq":      {"source": "BEA 经济分析局", "unit": "%", "scale": 1},
     "gdp_pot":      {"source": "CBO 国会预算办", "unit": "十亿美元", "scale": 1},
+    "fgdp":         {"source": "BEA 经济分析局", "unit": "十亿美元", "scale": 1},
+    "pdfp":         {"source": "BEA 经济分析局", "unit": "十亿美元", "scale": 1},
     "gdi":          {"source": "BEA 经济分析局", "unit": "十亿美元", "scale": 1},
     "inv_private":  {"source": "BEA 经济分析局", "unit": "十亿美元", "scale": 1},
     "retail":       {"source": "Census 人口普查局", "unit": "十亿美元", "scale": 0.001},  # 原始：百万美元

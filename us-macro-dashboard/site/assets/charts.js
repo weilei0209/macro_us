@@ -82,12 +82,23 @@
   }
 
   // 构建 Y 轴配置：双轴（dual_axis）时左轴=series[yAxisIndex 0]，右轴=series[yAxisIndex 1]
+  // 刻度标签按量级自动取舍小数位：大数值（GDP、美联储总资产）不带四位小数，
+  // 否则 fitYAxis 写入的精确上下限会渲染成 "165,378.7" 这种长标签，被左侧 grid 边距裁掉。
+  function fmtTick(v){
+    var a = Math.abs(v);
+    if(a >= 1000) return Math.round(v).toLocaleString('en-US');
+    if(a >= 100)  return String(Math.round(v));
+    if(a >= 10)   return String(Math.round(v * 10) / 10);
+    return String(Math.round(v * 100) / 100);
+  }
+
   function buildYAxis(data, big){
     var dual = data.dual_axis === true;
+    var tickLabel = {color:THEME.text3, fontSize: big?11:10, formatter:fmtTick};
     var base = {
       type:'value',
       axisLine:{show:false}, axisTick:{show:false},
-      axisLabel:{color:THEME.text3, fontSize: big?11:10}
+      axisLabel: Object.assign({}, tickLabel)
     };
     if(!dual){
       base.splitLine = {lineStyle:{color:THEME.splitline}};
@@ -96,11 +107,11 @@
     var left = Object.assign({}, base);
     left.position = 'left';
     left.splitLine = {lineStyle:{color:THEME.splitline}};
-    left.axisLabel = {color:THEME.text3, fontSize: big?11:10};
+    left.axisLabel = Object.assign({}, tickLabel);
     var right = Object.assign({}, base);
     right.position = 'right';
     right.splitLine = {show:false};
-    right.axisLabel = {color:THEME.text3, fontSize: big?11:10};
+    right.axisLabel = Object.assign({}, tickLabel);
     return [left, right];
   }
 
@@ -170,6 +181,16 @@
     return option;
   }
 
+  // 把 y 轴跨度切成一格"好看"的刻度步长（1/2/2.5/5 × 10^n），约 5 格
+  function niceStep(span){
+    if(!(span > 0)) return 1;
+    var raw = span / 5;
+    var mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+    var norm = raw / mag;
+    var mult = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
+    return mult * mag;
+  }
+
   // 根据 dataZoom 当前可见区间，动态重设 Y 轴范围（随 X 轴缩放自动适配）
   // 双轴（dual_axis）时，左轴拟合 yAxisIndex=0 的序列，右轴拟合 yAxisIndex=1 的序列，各自独立缩放
   function fitYAxis(chart, data){
@@ -201,9 +222,15 @@
       if(lo === Infinity || hi === -Infinity) return null;
       var pad = (hi - lo) * 0.08;
       if(pad === 0) pad = Math.abs(hi) * 0.05 || 1;
-      var ymin = Math.round((lo - pad) * 10000) / 10000;
-      var ymax = Math.round((hi + pad) * 10000) / 10000;
-      if(!(ymax > ymin)){ ymax = ymin + 1; }
+      // 上下限对齐到"整洁刻度"，避免用 10378.0043 这种原值当轴端点：
+      // 一是端点标签过长会被裁切，二是刻度值本身不好读
+      var span = (hi + pad) - (lo - pad);
+      var step = niceStep(span);
+      var ymin = Math.floor((lo - pad) / step) * step;
+      var ymax = Math.ceil((hi + pad) / step) * step;
+      ymin = Math.round(ymin * 1000) / 1000;
+      ymax = Math.round(ymax * 1000) / 1000;
+      if(!(ymax > ymin)){ ymax = ymin + step; }
       return { min: ymin, max: ymax };
     }
 
