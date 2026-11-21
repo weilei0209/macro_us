@@ -26,6 +26,15 @@ from indicators import (FRED_META, TOPIC_RULES, RELEASE_CALENDAR, RELEASE_RULE,
                         FREQ_SHORT, INDICATOR_META)
 
 
+def av(name):
+    """静态资源版本号：取源文件 mtime 拼到 URL 上（?v=...）。
+    避免浏览器缓存旧版 charts.js / style.css 与新页面错配（新增图表类型时会表现为空白卡片）。"""
+    try:
+        return str(int(os.path.getmtime(os.path.join(ASSETS_SRC, name))))
+    except OSError:
+        return "1"
+
+
 # ---------------------------------------------------------------------------
 # 工具函数
 # ---------------------------------------------------------------------------
@@ -760,9 +769,9 @@ document.documentElement.setAttribute('data-theme',t);
 <link rel="icon" type="image/png" sizes="256x256" href="assets/koala-us-macro.png">
 <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
 <link rel="apple-touch-icon" href="assets/koala-us-macro-180.png">
-<link rel="stylesheet" href="assets/style.css">
-<script src="assets/echarts.min.js"></script>
-<script src="assets/charts.js"></script>
+<link rel="stylesheet" href="assets/style.css?v={av('style.css')}">
+<script src="assets/echarts.min.js?v={av('echarts.min.js')}"></script>
+<script src="assets/charts.js?v={av('charts.js')}"></script>
 </head><body>
 <div class="nav"><div class="nav-inner">
   <a href="index.html" class="logo"><span class="logo-dot"></span><h1>美国宏观数据看板</h1></a>
@@ -886,6 +895,10 @@ def charts_script(data_map):
         '    if(!el) return;\n'
         '    var d = window.__CHARTS[id];\n'
         '    if(d && d.kind === "waterfall"){\n'
+        '      if(typeof window.renderWaterfall !== "function"){\n'
+        '        el.innerHTML = \'<div style="padding:24px 8px;color:#8a97ad;font-size:12px">图表脚本版本过旧（浏览器缓存），请按 Ctrl+Shift+R 强制刷新</div>\';\n'
+        '        return;\n'
+        '      }\n'
         '      window.__WATERFALLS = window.__WATERFALLS || {};\n'
         '      window.__WATERFALLS[id] = {data: d, key: d.default};\n'
         '      window.renderWaterfall(el, d, d.default);\n'
@@ -1211,9 +1224,9 @@ def render_topic_detail(r, series_data, updated, beveridge_html=None, phillips_h
 <link rel="icon" type="image/png" sizes="256x256" href="../assets/koala-us-macro.png">
 <link rel="icon" type="image/x-icon" href="../assets/favicon.ico">
 <link rel="apple-touch-icon" href="../assets/koala-us-macro-180.png">
-<link rel="stylesheet" href="../assets/style.css">
-<script src="../assets/echarts.min.js"></script>
-<script src="../assets/charts.js"></script>
+<link rel="stylesheet" href="../assets/style.css?v={av('style.css')}">
+<script src="../assets/echarts.min.js?v={av('echarts.min.js')}"></script>
+<script src="../assets/charts.js?v={av('charts.js')}"></script>
 </head><body>
 <div class="nav"><div class="nav-inner">
   <a href="../index.html" class="logo"><span class="logo-dot"></span><h1>美国宏观数据看板</h1></a>

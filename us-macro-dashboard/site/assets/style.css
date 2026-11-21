@@ -149,6 +149,7 @@ a{color:inherit;text-decoration:none}
 .chart-box{height:280px;width:100%}
 .chart-box.tall{height:360px}
 .chart-card.wide{grid-column:1/-1}
+.chart-card[data-nozoom] .c-zoom{display:none}
 /* 瀑布图（BEI 归因）：窗口切换按钮 + 动态口径行 */
 .wf-tabs{display:flex;gap:6px;margin:2px 0 6px;flex-wrap:wrap}
 .wf-tab{
