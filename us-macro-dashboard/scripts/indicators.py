@@ -478,7 +478,7 @@ DERIVED_INDICATORS = {
     "pce_yoy":      {"deps": ["pcepi"], "desc": "PCE 同比"},
     "core_pce_yoy": {"deps": ["pce_core"], "desc": "核心 PCE 同比"},
     "cpi_pce_gap":  {"deps": ["cpi_yoy", "pce_yoy"], "desc": "CPI-PCE 剪刀差（正常 +0.3~0.5，倒挂为异常）"},
-    "r_minus_g":    {"deps": ["tips10y", "gdp_qoq"], "desc": "实际利率 r - 实际增速 g（增长化债空间）"},
+    "r_minus_g":    {"deps": ["tips10y", "gdp_real"], "desc": "实际利率 r（10Y TIPS）- 实际增速 g（实际 GDP 同比，增长化债空间）"},
     "output_gap":   {"deps": ["gdp_real", "gdp_pot"], "desc": "产出缺口 = (实际GDP/潜在GDP - 1) * 100"},
     "sahm_rule":    {"deps": ["unrate"], "desc": "萨姆规则 = 失业率3MMA - 过去12个月最低3MMA（阈值0.5pp）"},
 }
@@ -523,7 +523,7 @@ TOPIC_RULES = {
     "r_minus_g": {
         "name": "增长化债空间",
         "indicator": "r_minus_g",
-        "desc": "实际利率 r vs 实际增速 g 的比较",
+        "desc": "实际利率 r（10Y TIPS）vs 实际增速 g（实际 GDP 同比）的比较",
         "framework": "r<g 时可自然化债；r≈g 则化债空间有限，需警惕通胀化债。",
     },
     "cpi_pce_inversion": {

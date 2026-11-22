@@ -494,15 +494,21 @@ def main():
             "date": derived["cpi_yoy"]["date"],
         }
 
-    # r - g（实际利率 r 用 TIPS10y，g 用 GDP 环比折年近似）
+    # r - g（r 用最新 TIPS10y，g 用实际 GDP 同比）
+    # g 必须用同比而不是环比折年：环比折年单季可在 −28%~+35% 之间摆动（2020 疫情、
+    # 2021 基数效应），与 2~3% 的实际利率相减得到的"化债空间"没有可比性；同比与 r-g 图同口径
     tips = latest_value(all_series.get("tips10y", []))
-    gdp_qoq = latest_value(all_series.get("gdp_qoq", []))
-    if tips and gdp_qoq and tips["value"] is not None and gdp_qoq["value"] is not None:
+    grows = [p for p in all_series.get("gdp_real", []) if p["value"] is not None]
+    g_yoy = None
+    if len(grows) >= 5 and grows[-5]["value"]:
+        g_yoy = round((grows[-1]["value"] / grows[-5]["value"] - 1) * 100, 2)
+    if tips and g_yoy is not None and tips["value"] is not None:
         # date 锚定在季度（g 的时点），r 为最新日频快照；二者频率不同，note 中注明
         derived["r_minus_g"] = {
-            "value": round(tips["value"] - gdp_qoq["value"], 2),
-            "date": gdp_qoq["date"],
-            "note": f"r(TIPS10y, {tips['date']})={tips['value']}% - g(GDP环比折年, {gdp_qoq['date'][:7]})={gdp_qoq['value']}%",
+            "value": round(tips["value"] - g_yoy, 2),
+            "date": grows[-1]["date"],
+            "note": f"r(TIPS10y, {tips['date']})={tips['value']}% - g(实际GDP同比, "
+                    f"{grows[-1]['date'][:4]}Q{(int(grows[-1]['date'][5:7]) - 1) // 3 + 1})={g_yoy}%",
         }
 
     # 产出缺口（需按日期对齐：用实际GDP最新日期的潜在GDP值）

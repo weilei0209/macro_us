@@ -64,9 +64,12 @@
   }
 
   // 日期 -> 季度标签（2026-07-01 → 2026 Q3）
-  function quarterLabel(v){
+  function quarterLabel(v, lag){
     var m = String(v).match(/^(\d{4})-(\d{2})/);
-    return m ? (m[1] + ' Q' + Math.ceil(parseInt(m[2],10)/3)) : '';
+    if(!m) return '';
+    var y = parseInt(m[1],10), q = Math.ceil(parseInt(m[2],10)/3) - (lag || 0);
+    while(q <= 0){ q += 4; y -= 1; }   // 跨年回退（Q1 的上一季是去年 Q4）
+    return y + ' Q' + q;
   }
 
   function tooltipFormatter(params, releaseRule, unit, dayFmt, period, seriesMeta, tipExtra){
@@ -84,7 +87,8 @@
     params.forEach(function(p){
       if(p.seriesType === 'custom') return;   // 衰退区间标注不是数据序列，不进 tooltip
       if(p.value==null || p.value==='') return;   // 缺值不占一行（多频率共图时很常见）
-      // 季频序列（如 ECI 落在月频横轴上）补注对应季度，避免把 7 月的季度值读成 7 月单月
+      // 季频序列（如 ECI 落在月频横轴上）补注对应季度，避免把 7 月的季度值读成 7 月单月；
+      // quarter_lag 用于"阶梯延续"的序列（g 落在日频横轴上，当期读到的是上一季的值）
       var meta = seriesMeta && seriesMeta[p.seriesIndex];
       var v;
       // 序列自带单位优先（一张卡里同时有十亿美元柱和百分比线时，全局 unit 不够用）
@@ -98,7 +102,8 @@
         v = Number(p.value).toFixed(meta.digits == null ? 2 : meta.digits) + '%';
       }else if(unit === 'bp') v = fmtBp(p.value) + 'bp';   // 差值类图表带符号，便于分辨正负
       else v = Number(p.value).toFixed(2);
-      var suffix = (meta && meta.freq === 'quarter') ? '（' + quarterLabel(params[0].axisValue) + '）' : '';
+      var suffix = (meta && meta.freq === 'quarter')
+        ? '（' + quarterLabel(params[0].axisValue, meta.quarter_lag) + '）' : '';
       s += p.marker + p.seriesName + suffix + '：' + v + '<br/>';
     });
     // 附加明细（如净发行背后的"发行 X / 到期 Y"），让净额可追溯
@@ -174,6 +179,8 @@
         symbol: s.showSymbol === true ? 'circle' : 'none',
         symbolSize: big ? 7 : 5,
         connectNulls: s.connectNulls === true,
+        // step:'end' 用于把季频值铺到日频横轴（g 的阶梯线）：值保持到下一季发布时才跳变
+        step: s.step || false,
         lineStyle:{width: big?2.5:2, color:s.color, type: dashed ? 'dashed' : 'solid'},
         itemStyle:{color:s.color},
         // 单序列默认加淡色面积；零值上下反复穿越的序列（如期限溢价）用 no_area 关掉，

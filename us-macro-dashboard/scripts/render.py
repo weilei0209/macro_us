@@ -358,6 +358,69 @@ def align_series(dates, series):
     return [m.get(d) for d in dates]
 
 
+def _q_end(d):
+    """季度首日（2026-07-01）→ 该季末月的 28 号（2026-09-28）。
+
+    用 28 号而不是月末日：任何月份都有 28 号，不必处理 30/31 与闰年。
+    """
+    y, m = int(d[:4]), int(d[5:7]) + 2
+    y += (m - 1) // 12
+    m = (m - 1) % 12 + 1
+    return f"{y:04d}-{m:02d}-28"
+
+
+def _q_release(d, lag_days=30):
+    """季度首个日 → 该季度 GDP 初值可用的日期（季末 + 约 4 周，BEA 初值惯例）。
+
+    阶梯线不能从季末当天就跳到本季值，否则等于提前一个月知道答案：2026Q3 的值
+    10 月底才发布，图上 9/28 就画出来会把"当时能否判断 r<g"变成事后诸葛。
+    """
+    y, m, dd = int(_q_end(d)[:4]), int(_q_end(d)[5:7]), 28
+    return (datetime.date(y, m, dd) + datetime.timedelta(days=lag_days)).isoformat()
+
+
+def _yoy_level(series, lag=4):
+    """季度水平值 → lag 季同比（%），返回 [(季度首日, yoy)]。"""
+    pts = [p for p in series if p["value"] is not None]
+    out = []
+    for i in range(lag, len(pts)):
+        base = pts[i - lag]["value"]
+        if base:
+            out.append((pts[i]["date"], (pts[i]["value"] / base - 1) * 100))
+    return out
+
+
+def _step_fill(dates, points):
+    """把季度点按"[季末+发布滞后]阶梯"前向填充到日频日期轴上。"""
+    q = sorted((_q_release(d), v) for d, v in points)
+    out, j = [], -1
+    for d in dates:
+        while j + 1 < len(q) and q[j + 1][0] <= d:
+            j += 1
+        out.append(round(q[j][1], 2) if j >= 0 else None)
+    return out
+
+
+def rg_series(series_data):
+    """r − g 化债空间：r = 10Y TIPS 实际收益率（日频），g = 实际 GDP 同比（4 季度）。
+
+    两条腿频率差 60 倍：季度值如果直接落在日频横轴上，一年只有 4 个孤立点，
+    既连线成不了趋势、也会被误读成"某一天"的增速，所以 g 按季末阶梯前向填充
+    （前端画 step 线），每个交易日取最近一个已公布季度的同比。
+
+    g 用同比而非环比折年：2020Q2 环比折年 −28%、Q3 +35%，与实际利率并置会把 r
+    压成一条水平线；同比是 Blanchard 式 r<g 判据的常用口径，量级也和 TIPS 可比。
+    """
+    r_pts = [p for p in series_data.get("tips10y", [])
+             if p["value"] is not None and p["date"] >= "2003-01-01"]
+    if len(r_pts) < 24:
+        return None
+    dates = [p["date"] for p in r_pts]
+    r_vals = [round(p["value"], 2) for p in r_pts]
+    g_vals = _step_fill(dates, _yoy_level(series_data.get("gdp_real", [])))
+    return {"dates": dates, "r": r_vals, "g": g_vals}
+
+
 # NBER 商业周期委员会认定的衰退区间（月度，起始月 → 结束月）
 # 来源：NBER Business Cycle Dating Committee；2020 年那次为 COVID 衰退，仅两个月但仍被认定
 NBER_RECESSIONS = [
@@ -597,6 +660,25 @@ def goods_vs_payrolls_chart(series_data):
 def build_chart(series_data, chart):
     cid = chart["id"]
     rule = freq_rule_for_chart(chart)
+    # ---- r − g 化债空间（财政页 / 增长页共用）----
+    # r 日频、g 季频：g 按"[季末+发布滞后]阶梯"前向填充到日频，画 step 线，
+    # 否则季度值散在 6000 个交易日的横轴上，一年只有 4 个孤立点，看着像"没数据"
+    if cid in ("fis_rg", "gro_rg", "chart_rg"):
+        d = rg_series(series_data)
+        if not d:
+            return {"dates": [], "series": []}
+        return {
+            "dates": d["dates"],
+            "release_rule": "r = 10Y TIPS 实际收益率（日频）；g = 实际 GDP 同比（4 季度，季频），"
+                            "按季末后约 4 周（BEA 初值发布时点）阶梯延续，不提前使用未公布数据",
+            "unit": "%", "day_format": True, "xfmt": "ym",
+            "series": [
+                {"name": "r（10Y TIPS 实际利率）", "values": d["r"], "color": "#8b5cf6",
+                 "unit": "%"},
+                {"name": "g（实际 GDP 同比）", "values": d["g"], "color": "#34d399",
+                 "unit": "%", "step": "end", "freq": "quarter", "quarter_lag": 1},
+            ],
+        }
     # BEI 变动归因瀑布：把 ΔBEI 拆成名义腿 / 实际腿（可切换观察窗口）
     if cid in ("inf_bei_attr", "td_bei_attr"):
         d = bei_attribution(series_data)
@@ -866,7 +948,7 @@ def build_chart(series_data, chart):
 HOME_CHARTS = [
     {"id": "chart_inflation", "title": "通胀锚定：5y5y 远期通胀补偿", "sub": "长端通胀预期对短期通胀的敏感性，最严格的锚定指标", "series": ["fwd5y5y"], "color": "#f5a623"},
     {"id": "chart_vu", "title": "就业健康度：V/U 比率", "sub": "岗位空缺 / 失业人数（领先工资通胀 2 季度）", "series": [], "color": "#e5484d"},
-    {"id": "chart_rg", "title": "增长化债空间：r 与 g", "sub": "实际利率 vs 实际增速，r<g 可自然化债", "series": ["tips10y", "gdp_qoq"], "color": "#3b82f6"},
+    {"id": "chart_rg", "title": "增长化债空间：r 与 g", "sub": "r = 10Y TIPS 实际利率 · g = 实际 GDP 同比（阶梯延续），r<g 可自然化债", "series": ["tips10y", "gdp_real"], "color": "#3b82f6"},
     {"id": "chart_infl_yoy", "title": "通胀口径：CPI vs PCE 同比", "sub": "CPI（拉氏）vs PCE（链式），剪刀差为口径差异", "series": [], "color": "#e5484d"},
     {"id": "chart_curve", "title": "收益率曲线：10Y vs 2Y", "sub": "期限利差，倒挂常预示衰退", "series": ["us10y", "us2y"], "color": "#8b5cf6"},
     {"id": "chart_rrp", "title": "流动性：ON RRP 余额", "sub": "缩表终点信号，归零则提示钱荒风险", "series": ["on_rrp"], "color": "#34d399"},
@@ -896,10 +978,10 @@ THEME_CHARTS = {
     "growth": [
         {"id": "gro_gdp", "title": "实际 GDP：剥洋葱三层（GDP / FGDP / PDFP）", "sub": "逐级剔除库存变化 → 净出口与政府支出，越往里越接近真实内需；水平值（十亿链式美元）", "series": ["gdp_real", "fgdp", "pdfp"], "color": "#3b82f6", "wide": True},
         {"id": "gro_qoq", "title": "GDP 环比折年：剥洋葱三层", "sub": "均 BEA 季调折年率。GDP 的摆动常由库存与净出口造成，PDFP 才是内需；背景柱：红=技术性衰退、蓝=NBER 衰退（默认 2021 年起，左拖滑块可见 2008/2020 段）", "series": ["gdp_qoq", "fgdp_qoq", "pdfp_qoq"], "color": "#e5484d", "wide": True},
-        {"id": "gro_rg", "title": "r vs g", "sub": "增长化债空间", "series": ["tips10y", "gdp_qoq"], "color": "#3b82f6", "wide": True},
+        {"id": "gro_rg", "title": "r vs g", "sub": "r = 10Y TIPS 实际利率（日频）；g = 实际 GDP 同比（季频，按发布时点阶梯延续）。r<g 时可自然化债", "series": ["tips10y", "gdp_real"], "color": "#3b82f6", "wide": True},
     ],
     "fiscal": [
-        {"id": "fis_rg", "title": "r - g 化债空间", "sub": "实际利率 vs 实际增速", "series": ["tips10y", "gdp_qoq"], "color": "#3b82f6"},
+        {"id": "fis_rg", "title": "r - g 化债空间", "sub": "r = 10Y TIPS 实际利率（日频）· g = 实际 GDP 同比（季频，阶梯延续）", "series": ["tips10y", "gdp_real"], "color": "#3b82f6"},
         {"id": "fis_debt", "title": "10Y 美债收益率", "sub": "供给冲击 → 期限溢价", "series": ["us10y"], "color": "#e5484d"},
         {"id": "fis_supply", "title": "美债净发行：bills vs coupon", "sub": "月度净发行 = 公开市场发行额 − 当月到期额，已剔除 SOMA 增发（Fed 在拍卖中的 add-on）；续发按 CUSIP 归并，不在发行侧重复计、只在到期侧计一次。柱为净发行（十亿美元，正=私人市场要吸收的新增供给），线为 coupon 占净发行的比重（12 个月滚动，右轴）：>100% 表示新增供给全部来自 coupon、bills 在收缩，<50% 说明靠 bills 撑量。久期供给的摆动在这条线上", "series": [], "color": "#3b82f6", "wide": True},
         {"id": "fis_acm_tp", "title": "ACM 10Y 期限溢价（日频）", "sub": "纽约联储 Adrian-Crump-Moench 模型：10Y 收益率 = 风险中性预期路径 + 期限溢价。负值 = 投资者为持有长债反而付出成本（QE 压价期）；供给放量、通胀不确定性抬升会推高溢价", "series": ["acm_tp10"], "color": "#e5484d", "wide": True},
@@ -1216,6 +1298,9 @@ def chart_meta(chart):
         "td_bei_attr": "来源 美国财政部 / 美联储 · 单位 bp · BEI = 名义 10Y（DGS10）− TIPS 实际 10Y（DFII10），两腿取同一交易日收盘；实际腿贡献 = −Δ实际；柱色随贡献方向：推高 BEI 为红、压低为绿",
         "fis_acm_tp": "来源 纽约联储（ACM，Adrian-Crump-Moench）· 单位 % · 10Y 期限溢价 = 模型拟合 10Y 收益率 − 风险中性预期短端路径；日频、每日更新（滞后约 1 个工作日）；负值代表投资者为持有长债付出成本（QE / 避险抢券期），2023 年后转正反映供给与通胀不确定性重定价",
         "fis_acm_attr": "来源 纽约联储（ACM）· 单位 bp（柱）/% （端点）· 恒等式 Y(10) = RN(10) + TP(10)，故 Δ10Y = Δ期限溢价 + Δ预期路径，两腿相加精确等于长端变动、无残差；三列取同一交易日；柱色随贡献方向：推高 10Y 为红、压低为绿",
+        "fis_rg": "来源 美国财政部 / BEA · 单位 % · g 取 4 季度同比，按季末后约 4 周（BEA 初值发布）阶梯延续，不提前使用未公布数据；r<g 的时段债务率自然下降，r>g 需靠财政紧缩或通胀消化",
+        "gro_rg": "来源 美国财政部 / BEA · 单位 % · g 取 4 季度同比，按季末后约 4 周（BEA 初值发布）阶梯延续，不提前使用未公布数据；r<g 的时段债务率自然下降，r>g 需靠财政紧缩或通胀消化",
+        "chart_rg": "来源 美国财政部 / BEA · 单位 % · g 取 4 季度同比，按季末后约 4 周（BEA 初值发布）阶梯延续，不提前使用未公布数据；r<g 的时段债务率自然下降，r>g 需靠财政紧缩或通胀消化",
         "gro_gdp": "来源 BEA 经济分析局 · 单位 十亿链式 2017 美元 · GDP=总量；FGDP（Final Sales of Domestic Product）=剔除私人库存变化；PDFP（Private Domestic Final Purchases）=再剔净出口与政府支出，即“核心 GDP”。三者水平值之差 = 库存、净出口、政府各自的贡献",
         "gro_qoq": "来源 BEA · 单位 %（季调年化率）· 三条均为官方环比折年：GDP（A191RL）→ FGDP 最终销售（A190RL，剔库存）→ PDFP（再剔净出口与政府），GDP 与 PDFP 的缺口 = 库存+净出口+政府。背景柱：红=技术性衰退（连续两季负增长，按当前修订数据；2022 年那两季负增长已被 BEA 基准修订抹平）、蓝=NBER 商业周期委员会认定区间（2001/2008/2020）",
         # 就业页新增
@@ -1256,7 +1341,7 @@ def kpi_html(derived):
     kpi_base = {
         "vu_ratio": "jolts_open", "payrolls_mom": "payrolls", "payrolls_3mma": "payrolls",
         "cpi_yoy": "cpi", "core_pce_yoy": "pce_core", "cpi_pce_gap": "pcepi",
-        "r_minus_g": "gdp_qoq", "output_gap": "gdp_real",
+        "r_minus_g": "gdp_real", "output_gap": "gdp_real",
     }
     parts = ['<div class="kpi-grid">']
     for key, title, sub, kind, unit, accent in KPI_CARDS:
