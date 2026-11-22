@@ -448,6 +448,11 @@ def bei_slope_series(series_data):
     return {"dates": [p[0] for p in pts], "values": [p[1] for p in pts]}
 
 
+def _bp_str(v):
+    """bp 数值转带符号字符串（+2.1 / −7.0）。减号用 U+2212，与前端 fmtBp 保持一致。"""
+    return ("%+.1f" % v).replace("-", "−")
+
+
 def bei_attribution(series_data):
     """BEI 变动归因（瀑布图数据）：ΔBEI = Δ名义 − Δ实际。
     名义腿贡献 = Δ名义10Y，实际腿贡献 = −ΔTIPS实际10Y，两者之和恒等于 ΔBEI。
@@ -465,18 +470,72 @@ def bei_attribution(series_data):
         if i0 >= i1:
             continue
         d0, d1 = dates[i0], dates[i1]
-        n0, n1 = round(nom[d0] * 100, 1), round(nom[d1] * 100, 1)
-        r0, r1 = round(real[d0] * 100, 1), round(real[d1] * 100, 1)
+        bei0 = round((nom[d0] - real[d0]) * 100, 1)
+        bei1 = round((nom[d1] - real[d1]) * 100, 1)
+        leg_nom = round((nom[d1] - nom[d0]) * 100, 1)     # 名义腿对 BEI 的贡献
+        leg_real = round((real[d0] - real[d1]) * 100, 1)  # 实际腿对 BEI 的贡献（= −Δ实际）
         windows.append({
             "key": key, "label": label, "from": d0, "to": d1,
-            "nom0": n0, "nom1": n1, "real0": r0, "real1": r1,
-            "bei0": round(n0 - r0, 1), "bei1": round(n1 - r1, 1),
-            "leg_nom": round(n1 - n0, 1),        # 名义腿对 BEI 的贡献
-            "leg_real": round(r0 - r1, 1),       # 实际腿对 BEI 的贡献（= −Δ实际）
+            "v0": bei0, "v1": round(bei0 + leg_nom + leg_real, 1),
+            "leg_vals": [leg_nom, leg_real],
+            "leg_detail": [
+                f"10Y 名义：{nom[d0]:.2f}% → {nom[d1]:.2f}%（{_bp_str((nom[d1]-nom[d0])*100)}bp）",
+                f"TIPS 实际 10Y：{real[d0]:.2f}% → {real[d1]:.2f}%（{_bp_str((real[d1]-real[d0])*100)}bp），"
+                f"实际腿 = −Δ实际",
+            ],
         })
     if not windows:
         return None
-    return {"kind": "waterfall", "unit": "bp", "default": "1m" if len(windows) > 1 else windows[0]["key"],
+    return {"kind": "waterfall", "unit": "bp", "level_fmt": "bp", "axis_name": "BEI（bp）",
+            "start_name": "期初 BEI", "end_name": "期末 BEI",
+            "legs": [{"name": "名义腿"}, {"name": "实际腿"}],
+            "default": "1m" if len(windows) > 1 else windows[0]["key"],
+            "windows": windows}
+
+
+def acm_tp_series(series_data):
+    """ACM 10Y 期限溢价（%，日频）走势。"""
+    return series_points(series_data.get("acm_tp10", []))
+
+
+def acm_attribution(series_data):
+    """ACM 口径的 10Y 长端变动归因（瀑布图）：Δ拟合10Y = Δ期限溢价 + Δ预期路径。
+
+    ACM 的恒等式是 Y(n) = RN(n) + TP(n)（拟合收益率 = 风险中性预期短端路径 + 期限溢价），
+    因此任何区间的长端变动都能**精确**拆成两块，不需要残差项：
+      期限溢价腿 → 反映供给冲击 / 通胀不确定性 / 美债需求
+      预期路径腿 → 反映市场对降息路径的重新定价
+    三列取同一交易日，避免口径错位。"""
+    y = {p["date"]: p["value"] for p in series_data.get("acm_y10", []) if p["value"] is not None}
+    tp = {p["date"]: p["value"] for p in series_data.get("acm_tp10", []) if p["value"] is not None}
+    rn = {p["date"]: p["value"] for p in series_data.get("acm_rn10", []) if p["value"] is not None}
+    dates = sorted(set(y) & set(tp) & set(rn))
+    if len(dates) < 6:
+        return None
+    windows = []
+    i1 = len(dates) - 1
+    for key, label, n in BEI_ATTR_WINDOWS:
+        i0 = max(0, i1 - n)
+        if i0 >= i1:
+            continue
+        d0, d1 = dates[i0], dates[i1]
+        leg_tp = round((tp[d1] - tp[d0]) * 100, 1)
+        leg_rn = round((rn[d1] - rn[d0]) * 100, 1)
+        windows.append({
+            "key": key, "label": label, "from": d0, "to": d1,
+            "v0": round(y[d0], 2), "v1": round(y[d0] + (leg_tp + leg_rn) / 100, 2),
+            "leg_vals": [leg_tp, leg_rn],
+            "leg_detail": [
+                f"10Y 期限溢价：{tp[d0]:.2f}% → {tp[d1]:.2f}%（{_bp_str((tp[d1]-tp[d0])*100)}bp）",
+                f"风险中性预期路径：{rn[d0]:.2f}% → {rn[d1]:.2f}%（{_bp_str((rn[d1]-rn[d0])*100)}bp）",
+            ],
+        })
+    if not windows:
+        return None
+    return {"kind": "waterfall", "unit": "bp", "level_fmt": "pct", "axis_name": "10Y（%）",
+            "start_name": "期初 10Y", "end_name": "期末 10Y",
+            "legs": [{"name": "期限溢价"}, {"name": "预期路径"}],
+            "default": "1m" if len(windows) > 1 else windows[0]["key"],
             "windows": windows}
 
 
@@ -516,6 +575,21 @@ def build_chart(series_data, chart):
         return {"dates": d["dates"], "release_rule": rule, "mark_line": 0, "zoom_start": "2013-01-01",
                 "unit": "bp", "day_format": True,
                 "series": [{"name": "BEI 10Y − 5y5y", "values": d["values"], "color": "#f5a623"}]}
+    # ---- 财政页：ACM 期限溢价 ----
+    if cid == "fis_acm_tp":
+        d = acm_tp_series(series_data)
+        if not d["dates"]:
+            return {"dates": [], "series": []}
+        # 期限溢价长期在 0 附近反复穿越（2011-2023 为负的 QE 压价期），0 轴是这张图的读数基准
+        return {"dates": d["dates"], "release_rule": "日频 · 纽约联储每日更新（滞后约 1 个工作日）",
+                "mark_line": 0, "day_format": True, "unit": "%", "no_area": True,
+                "series": [{"name": "ACM 10Y 期限溢价", "values": d["values"], "color": "#e5484d"}]}
+    if cid == "fis_acm_attr":
+        d = acm_attribution(series_data)
+        if not d:
+            return {"dates": [], "series": []}
+        d["release_rule"] = "三列取同一交易日 · 拟合 10Y = 期限溢价 + 风险中性预期路径"
+        return d
     # 非农新增 + 修订对比（实线最新值 + 虚线初值/1次修正）
     if cid == "emp_payrolls":
         return payrolls_revision_chart(series_data)
@@ -768,6 +842,8 @@ THEME_CHARTS = {
     "fiscal": [
         {"id": "fis_rg", "title": "r - g 化债空间", "sub": "实际利率 vs 实际增速", "series": ["tips10y", "gdp_qoq"], "color": "#3b82f6"},
         {"id": "fis_debt", "title": "10Y 美债收益率", "sub": "供给冲击 → 期限溢价", "series": ["us10y"], "color": "#e5484d"},
+        {"id": "fis_acm_tp", "title": "ACM 10Y 期限溢价（日频）", "sub": "纽约联储 Adrian-Crump-Moench 模型：10Y 收益率 = 风险中性预期路径 + 期限溢价。负值 = 投资者为持有长债反而付出成本（QE 压价期）；供给放量、通胀不确定性抬升会推高溢价", "series": ["acm_tp10"], "color": "#e5484d", "wide": True},
+        {"id": "fis_acm_attr", "title": "长端变动归因：期限溢价 vs 预期路径", "sub": "Δ10Y 拟合收益率 = Δ期限溢价 + Δ预期路径（ACM 恒等式，无残差）。切换窗口看最近这一波长端波动是供给 / 风险补偿在推，还是降息预期在回摆", "series": [], "color": "#e5484d", "wide": True},
     ],
     "monetary": [
         {"id": "mon_ffr", "title": "联邦基金 vs SOFR", "sub": "政策利率走廊", "series": ["ffr", "sofr"], "color": "#8b5cf6"},
@@ -803,6 +879,7 @@ THEME_TIPS = {
         ("债务率看路径", "债务可持续性看债务率路径是否收敛，而非绝对水平。"),
         ("三种化债路径", "增长化债（r<g）/ 通胀化债 / 违约重组。当前 r-g 缺口决定空间。"),
         ("美债供给 → 期限溢价", "净发行量上升 → 期限溢价抬升 → 长端收益率承压。"),
+        ("期限溢价是残差，不是报价", "ACM 模型把 10Y 收益率拆成「风险中性预期短端路径 + 期限溢价」：前者是降息路径定价，后者是持有长久期的额外补偿。不同模型（ACM / Kim-Wright / DKW）水平可差 1-2 个百分点、方向高度一致；看趋势别看小数点。"),
     ],
     "monetary": [
         ("SOFR 是事实政策利率", "联邦基金利率是目标，SOFR 才是事实成交利率。两者利差反映准备金充裕度。"),
@@ -1076,6 +1153,8 @@ def chart_meta(chart):
         "inf_bei_slope": "来源 美联储（T10YIE / T5YIFR）· 单位 bp · BEI10Y − 5y5y；线性近似下 = (前 5 年 BEI − 后 5 年 5y5y) ÷ 2，只反映一半的期限缺口；0 轴以上 = 前高后低、以下 = 前低后高",
         "inf_bei_attr": "来源 美国财政部 / 美联储 · 单位 bp · BEI = 名义 10Y（DGS10）− TIPS 实际 10Y（DFII10），两腿取同一交易日收盘；实际腿贡献 = −Δ实际；柱色随贡献方向：推高 BEI 为红、压低为绿",
         "td_bei_attr": "来源 美国财政部 / 美联储 · 单位 bp · BEI = 名义 10Y（DGS10）− TIPS 实际 10Y（DFII10），两腿取同一交易日收盘；实际腿贡献 = −Δ实际；柱色随贡献方向：推高 BEI 为红、压低为绿",
+        "fis_acm_tp": "来源 纽约联储（ACM，Adrian-Crump-Moench）· 单位 % · 10Y 期限溢价 = 模型拟合 10Y 收益率 − 风险中性预期短端路径；日频、每日更新（滞后约 1 个工作日）；负值代表投资者为持有长债付出成本（QE / 避险抢券期），2023 年后转正反映供给与通胀不确定性重定价",
+        "fis_acm_attr": "来源 纽约联储（ACM）· 单位 bp（柱）/% （端点）· 恒等式 Y(10) = RN(10) + TP(10)，故 Δ10Y = Δ期限溢价 + Δ预期路径，两腿相加精确等于长端变动、无残差；三列取同一交易日；柱色随贡献方向：推高 10Y 为红、压低为绿",
         "gro_gdp": "来源 BEA 经济分析局 · 单位 十亿链式 2017 美元 · GDP=总量；FGDP（Final Sales of Domestic Product）=剔除私人库存变化；PDFP（Private Domestic Final Purchases）=再剔净出口与政府支出，即“核心 GDP”。三者水平值之差 = 库存、净出口、政府各自的贡献",
         "gro_qoq": "来源 BEA · 单位 %（季调年化率）· 三条均为官方环比折年：GDP（A191RL）→ FGDP 最终销售（A190RL，剔库存）→ PDFP（再剔净出口与政府），GDP 与 PDFP 的缺口 = 库存+净出口+政府。背景柱：红=技术性衰退（连续两季负增长，按当前修订数据；2022 年那两季负增长已被 BEA 基准修订抹平）、蓝=NBER 商业周期委员会认定区间（2001/2008/2020）",
         # 就业页新增

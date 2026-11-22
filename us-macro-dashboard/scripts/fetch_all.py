@@ -20,7 +20,7 @@ from indicators import (FRED_SERIES, FRED_META, BLS_SERIES, RELEASE_CALENDAR,
                         SCALED_INDICATORS, DIFFUSION_INDUSTRIES, SUPERCORE_WEIGHTS)
 from fetcher import (FredClient, BlsClient, BeaClient, CensusClient,
                      load_cache, save_cache, which_indicators_due,
-                     cache_path, fetch_zillow_zori)
+                     cache_path, fetch_zillow_zori, fetch_acm_term_premium)
 
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -392,6 +392,22 @@ def main():
         else:
             log(f"  Zillow ZORI 抓取失败且无缓存: {e}")
 
+    # 3.6 ACM 期限溢价（纽约联储，日频，非 FRED；全量与增量模式都抓）
+    # 财政页的"美债供给 → 期限溢价"落到数据上就是这条线，日频更新、滞后约 1 个工作日
+    try:
+        acm = fetch_acm_term_premium()
+        for k, v in acm.items():
+            all_series[k] = v
+            save_cache(k, v)
+        log(f"  纽约联储 ACM（期限溢价/预期路径/拟合 10Y）: "
+            f"{len(acm['acm_tp10'])} 点, 最新 {acm['acm_tp10'][-1]['date']}")
+    except Exception as e:
+        for k in ("acm_tp10", "acm_rn10", "acm_y10"):
+            cached = load_cache(k)
+            if cached:
+                all_series[k] = cached
+        log(f"  ACM 抓取失败({e})，用缓存")
+
     # 3.5 超级核心通胀（supercore = 核心服务剔除住房）
     # 用 BLS 相对重要性加权求差：supercore = (W_S×核心服务 − W_H×住房)/(W_S−W_H)
     # 两个分项基期同为 1982-1984=100，故加权结果仍是同基期指数，可直接算同比/环比。
@@ -519,7 +535,8 @@ def main():
     }
     latest = {}
     # 派生序列（仅供图表/专题使用，不作为独立指标卡展示）
-    DERIVED_SERIES_SKIP = {"sahm_rule", "emp_diffusion", "goods_emp"}
+    DERIVED_SERIES_SKIP = {"sahm_rule", "emp_diffusion", "goods_emp",
+                           "acm_tp10", "acm_rn10", "acm_y10"}
     for ind, series in all_series.items():
         if ind in DERIVED_SERIES_SKIP:
             continue

@@ -146,7 +146,9 @@
         connectNulls: s.connectNulls === true,
         lineStyle:{width: big?2.5:2, color:s.color, type: dashed ? 'dashed' : 'solid'},
         itemStyle:{color:s.color},
-        areaStyle: (i===0 && data.series.length===1) ? {color:s.color, opacity:0.15} : null,
+        // 单序列默认加淡色面积；零值上下反复穿越的序列（如期限溢价）用 no_area 关掉，
+        // 否则面积会从 0 轴一路铺到负值区，把走势压扁
+        areaStyle: (i===0 && data.series.length===1 && data.no_area !== true) ? {color:s.color, opacity:0.15} : null,
         emphasis:{focus:'series'},
         yAxisIndex: s.yAxisIndex === 1 ? 1 : 0
       };
@@ -372,10 +374,13 @@
     return chart;
   };
 
-  // ===== 瀑布图：BEI 变动归因 =====
-  // data = {kind:'waterfall', unit:'bp', default:'1m', windows:[
-  //   {key,label,from,to,nom0,nom1,real0,real1,bei0,bei1,leg_nom,leg_real}]}
-  // 恒等式：BEI = 名义 − 实际（bp）；名义腿贡献 = Δ名义，实际腿贡献 = −Δ实际
+  // ===== 瀑布图：变动归因（通用）=====
+  // 口径：从"期初值 v0"出发，按 legs 顺序逐腿累加，结果恒等于"期末值 v1"，起点/终点做柱、中间腿做浮动柱。
+  // 现有两张图共用：通胀页 BEI 归因、财政页 ACM 期限溢价变动归因。
+  // data = {kind:'waterfall', unit:'bp', level_fmt:'bp'|'pct', default:'1m',
+  //         start_name, end_name,
+  //         legs:[{name}],                     // 归因腿，顺序即累加顺序
+  //         windows:[{key,label,from,to,v0,v1,leg_vals:[..],leg_detail:["…"]}]}
   var wfCharts = {};
 
   function fmtBp(v){
@@ -385,20 +390,62 @@
   }
   function md(s){ return s ? String(s).slice(5).replace('-', '/') : ''; }
 
+  function wfLevel(v, data){
+    var n = Number(v);
+    if(isNaN(n)) return '—';
+    return data.level_fmt === 'pct' ? n.toFixed(2) + '%' : fmtBp(n) + 'bp';
+  }
+
   function wfOption(w, data){
     var t = THEME;
-    var a = w.bei0, b = a + w.leg_nom, c = b + w.leg_real;     // 逐步累计（期末应等于 bei1）
-    var names  = ['期初 BEI', '名义腿', '实际腿', '期末 BEI'];
-    var base   = [Math.min(0, a), Math.min(a, b), Math.min(b, c), Math.min(0, c)];
-    var size   = [Math.abs(a), Math.abs(w.leg_nom), Math.abs(w.leg_real), Math.abs(c)];
-    var colors = [t.text2,
-                  w.leg_nom  >= 0 ? t.red : t.green,
-                  w.leg_real >= 0 ? t.red : t.green,
-                  t.purple];
-    var texts  = [a.toFixed(1), fmtBp(w.leg_nom) + 'bp', fmtBp(w.leg_real) + 'bp', c.toFixed(1)];
+    var legs = data.legs || [];
+    var isPct = data.level_fmt === 'pct';
+    // 端点用"水平值"单位（% 或 bp），归因腿一律用 bp；累计前先把腿换成端点单位
+    var toLevel = function(v){ return isPct ? Number(v) / 100 : Number(v); };
+    var vals = [Number(w.v0)].concat((w.leg_vals || []).map(toLevel));
+        // 逐步累计：cum[0] 期初，cum[1..n-1] 中间腿，cum[n] 期末（应等于 v1）
+    var cum = [vals[0]];
+    for(var i = 1; i < vals.length; i++){ cum.push(cum[i-1] + vals[i]); }
+    var last = cum.length - 1;
 
-    var lo = Math.min(a, b, c), hi = Math.max(a, b, c);
-    var pad = Math.max((hi - lo) * 0.45, 6);
+    var names  = [data.start_name || '期初'].concat(legs.map(function(l){ return l.name; }))
+                 .concat([data.end_name || '期末']);
+    var base = [], size = [], colors = [], texts = [];
+    // 柱子数 = 期初 + 各腿 + 期末 = legs.length + 2；cum 只有 legs.length + 1 个累计值，
+    // 所以终点柱要单独占一格（不能和最后一条腿同格）
+    var nBars = names.length;
+    for(var i = 0; i < nBars; i++){
+      if(i === 0){
+        base.push(Math.min(0, cum[0])); size.push(Math.abs(cum[0]));
+        colors.push(t.text2); texts.push(wfLevel(cum[0], data));
+      }else if(i === nBars - 1){
+        base.push(Math.min(0, cum[last])); size.push(Math.abs(cum[last]));
+        colors.push(t.purple); texts.push(wfLevel(cum[last], data));
+      }else{
+        var d = cum[i] - cum[i-1];
+        base.push(Math.min(cum[i-1], cum[i])); size.push(Math.abs(d));
+        colors.push(d >= 0 ? t.red : t.green);      // 推高为红、压低为绿（延续 BEI 归因口径）
+        texts.push(fmtBp((w.leg_vals || [])[i-1]) + 'bp');   // 腿的贡献始终用 bp 显示
+      }
+    }
+
+    // 上下留白：只按累计值定范围（不强行把 0 纳入），否则 5% 附近的水平值会把变动压扁。
+    // bp 口径最小留 6bp；% 口径最小留 0.08pp，并把端点对齐到 1/2/5×10ⁿ 的整齐刻度，
+    // 否则会出现 3.9 与 3.8 挤在一起这种刻度。
+    var isPct = data.level_fmt === 'pct';
+    var lo = Math.min.apply(null, cum), hi = Math.max.apply(null, cum);
+    var pad = Math.max((hi - lo) * 0.45, isPct ? 0.08 : 6);
+    var ymin, ymax;
+    if(isPct){
+      var raw = (hi - lo + pad * 2) / 5;
+      var mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+      var norm = raw / mag;
+      var pstep = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+      ymin = Math.round(Math.floor((lo - pad) / pstep) * pstep * 100) / 100;
+      ymax = Math.round(Math.ceil((hi + pad) / pstep) * pstep * 100) / 100;
+    }else{
+      ymin = Math.floor(lo - pad); ymax = Math.ceil(hi + pad);
+    }
 
     return {
       backgroundColor: t.bg,
@@ -410,12 +457,10 @@
         formatter: function(p){
           var i = p.dataIndex;
           var head = '<div style="font-weight:600;margin-bottom:3px;">' + names[i] + '</div>';
-          if(i === 0) return head + 'BEI ' + a.toFixed(1) + 'bp<br/><span style="opacity:.7">' + w.from + '</span>';
-          if(i === 3) return head + 'BEI ' + c.toFixed(1) + 'bp<br/><span style="opacity:.7">' + w.to + '</span>';
-          if(i === 1) return head + '名义 10Y：' + (w.nom0/100).toFixed(2) + '% → ' + (w.nom1/100).toFixed(2) +
-                            '%（' + fmtBp(w.nom1 - w.nom0) + 'bp）<br/>对 BEI 贡献：' + fmtBp(w.leg_nom) + 'bp';
-          return head + 'TIPS 实际 10Y：' + (w.real0/100).toFixed(2) + '% → ' + (w.real1/100).toFixed(2) +
-                 '%（' + fmtBp(w.real1 - w.real0) + 'bp）<br/>对 BEI 贡献：' + fmtBp(w.leg_real) + 'bp';
+          if(i === 0)  return head + wfLevel(cum[0], data) + '<br/><span style="opacity:.7">' + w.from + '</span>';
+          if(i === last) return head + wfLevel(cum[i], data) + '<br/><span style="opacity:.7">' + w.to + '</span>';
+          var detail = (w.leg_detail || [])[i-1] || '';
+          return head + detail + '<br/>贡献：' + fmtBp((w.leg_vals || [])[i-1]) + 'bp';
         }
       },
       xAxis: {
@@ -425,8 +470,8 @@
         axisLabel: {color: t.text3, fontSize: 11}
       },
       yAxis: {
-        type: 'value', name: 'bp', nameTextStyle: {color: t.text3, fontSize: 10},
-        min: Math.floor(lo - pad), max: Math.ceil(hi + pad),
+        type: 'value', name: data.axis_name || 'bp', nameTextStyle: {color: t.text3, fontSize: 10},
+        min: ymin, max: ymax,
         axisLine: {show: false}, axisTick: {show: false},
         axisLabel: {color: t.text3, fontSize: 10},
         splitLine: {lineStyle: {color: t.splitline}}
@@ -463,13 +508,16 @@
     }
     chart.setOption(wfOption(w, data), true);
 
-    // 同步卡片里的动态口径行
+    // 同步卡片里的动态口径行：起点 → 终点，以及各腿贡献
     var note = document.getElementById(el.id + '-note');
     if(note){
-      note.innerHTML = '区间 ' + md(w.from) + ' → ' + md(w.to) +
-        '：名义 ' + fmtBp(w.nom1 - w.nom0) + 'bp · 实际 ' + fmtBp(w.real1 - w.real0) + 'bp · ' +
-        'BEI ' + fmtBp(w.bei1 - w.bei0) + 'bp（其中名义腿 ' + fmtBp(w.leg_nom) +
-        '、实际腿 ' + fmtBp(w.leg_real) + '）';
+      var legs = data.legs || [];
+      var legTxt = legs.map(function(l, i){
+        return l.name + ' ' + fmtBp((w.leg_vals || [])[i]) + 'bp';
+      }).join(' · ');
+      note.innerHTML = '区间 ' + md(w.from) + ' → ' + md(w.to) + '：' +
+        wfLevel(w.v0, data) + ' → ' + wfLevel(w.v1, data) +
+        (legTxt ? '（其中 ' + legTxt + '）' : '');
     }
     return chart;
   };

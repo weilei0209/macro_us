@@ -224,6 +224,75 @@ def fetch_zillow_zori(region_name="United States"):
 
 
 # ---------------------------------------------------------------------------
+# 五-补、纽约联储 ACM 期限溢价（Adrian-Crump-Moench）
+# ACM 不在 FRED 上，纽约联储只发布一个 .xls 工作簿（OLE2/BIFF8），
+# 故用 scripts/xls_lite.py（纯标准库）解析，不引入 pandas / xlrd。
+# 工作簿结构："ACM Daily" 表，列 DATE / ACMY01-10（拟合收益率）/
+#            ACMTP01-10（期限溢价）/ ACMRNY01-10（风险中性预期路径），单位均为 %。
+# 恒等式：拟合收益率 Y = 预期路径 RN + 期限溢价 TP。数据日频，滞后约 1 个工作日。
+# ---------------------------------------------------------------------------
+ACM_URL = "https://www.newyorkfed.org/medialibrary/media/research/data_indicators/ACMTermPremium.xls"
+ACM_START = "1990-01-01"     # 只保留 1990 年后，控制 series.json 体积（图表从 2000 起）
+_MONTHS = {m: i + 1 for i, m in enumerate(
+    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])}
+
+
+def parse_acm_date(s):
+    """'19-Nov-2026' -> '2026-11-19'。不用 strptime('%b')，避免受系统 locale 影响。"""
+    try:
+        d, mon, y = str(s).split("-")
+        return f"{int(y):04d}-{_MONTHS[mon]:02d}-{int(d):02d}"
+    except Exception:
+        return None
+
+
+def fetch_acm_term_premium():
+    """下载并解析纽约联储 ACM 期限溢价工作簿，返回 10 年期三件套：
+      acm_tp10 期限溢价 / acm_rn10 风险中性预期路径 / acm_y10 拟合 10Y 收益率（均 %，日频）
+    解析失败时抛异常，由调用方回退到缓存。"""
+    from xls_lite import read_sheet
+
+    req = urllib.request.Request(ACM_URL, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        blob = r.read()
+    if not blob or len(blob) < 100000:
+        raise RuntimeError(f"ACM 工作簿下载异常，仅 {len(blob)} 字节")
+    # 原始工作簿留档，便于出问题时不重复下载（约 10MB，data/ 已 gitignore）
+    raw_path = os.path.join(CACHE_DIR, "ACMTermPremium.xls")
+    with open(raw_path, "wb") as f:
+        f.write(blob)
+
+    rows = read_sheet(raw_path, "ACM Daily")
+    if not rows:
+        raise RuntimeError("ACM Daily 表为空")
+    head = [str(x).strip().upper() if x is not None else "" for x in rows[0]]
+    try:
+        i_date, i_y, i_tp, i_rn = (head.index("DATE"), head.index("ACMY10"),
+                                   head.index("ACMTP10"), head.index("ACMRNY10"))
+    except ValueError:
+        raise RuntimeError(f"ACM 表头不符合预期：{head[:12]}")
+
+    out = {"acm_tp10": [], "acm_rn10": [], "acm_y10": []}
+    for row in rows[1:]:
+        if len(row) <= max(i_date, i_y, i_tp, i_rn):
+            continue
+        date = parse_acm_date(row[i_date])
+        if not date or date < ACM_START:
+            continue
+        vals = {}
+        for key, idx in (("acm_y10", i_y), ("acm_tp10", i_tp), ("acm_rn10", i_rn)):
+            v = row[idx]
+            if isinstance(v, (int, float)):
+                vals[key] = round(float(v), 4)
+        if len(vals) == 3:
+            for key, v in vals.items():
+                out[key].append({"date": date, "value": v})
+    if not out["acm_tp10"]:
+        raise RuntimeError("ACM 解析结果为空")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # 六、发布日历判定
 # ---------------------------------------------------------------------------
 def _nth_weekday(year, month, weekday, nth):

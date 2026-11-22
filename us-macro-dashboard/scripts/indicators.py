@@ -3,7 +3,7 @@
 """
 美国宏观数据看板 - 指标定义与映射
 所有指标 ID 定义、发布日历、派生指标规则集中在此，供 fetch / analyze / render 复用。
-数据源：FRED / BLS / BEA / Census 四大官方 API。
+数据源：FRED / BLS / BEA / Census 四大官方 API（另有纽约联储 ACM 期限溢价 .xls 与 Zillow ZORI CSV）。
 """
 import os
 
@@ -345,6 +345,10 @@ INDICATOR_META = {
     "bei10y":       {"source": "美联储",       "unit": "%", "scale": 1},
     "fwd5y5y":      {"source": "美联储",       "unit": "%", "scale": 1},
     "tips10y":      {"source": "美国财政部",   "unit": "%", "scale": 1},
+    # ACM 期限溢价三件套（纽约联储 ACMTermPremium.xls 解析，不在 FRED 上）
+    "acm_tp10":     {"source": "纽约联储（ACM）", "unit": "%", "scale": 1},
+    "acm_rn10":     {"source": "纽约联储（ACM）", "unit": "%", "scale": 1},
+    "acm_y10":      {"source": "纽约联储（ACM）", "unit": "%", "scale": 1},
     "mortgage30":   {"source": "房地美",       "unit": "%", "scale": 1},
     "hy_spread":    {"source": "ICE BofA",     "unit": "百分点", "scale": 1},
     "vix":          {"source": "CBOE",         "unit": "指数", "scale": 1},

@@ -76,12 +76,16 @@ bash serve.sh 9000     # 自定义端口
 
 | API | 环境变量 | 覆盖 |
 |---|---|---|
-| FRED | `FRED_API_KEY` | 利率/期限溢价/BEI/5y5y/V-U/流动性等派生与聚合 |
+| FRED | `FRED_API_KEY` | 利率/BEI/5y5y/V-U/流动性等派生与聚合 |
 | BLS | `BLS_API_KEY` | 非农/失业率/CPI/工资/JOLTS/首申 |
 | BEA | `BEA_API_KEY` | GDP/PCE/GDI 国民账户 |
 | Census | `CENSUS_API_KEY` | 零售/地产/贸易 |
+| 纽约联储 ACM | 无需 key | 期限溢价 / 风险中性预期路径 / 拟合 10Y（`ACMTermPremium.xls`，日频） |
+| Zillow | 无需 key | ZORI 新租约租金（公开 CSV，月频） |
 
-四个 key 均从环境变量读取，无需硬编码。
+四个 API key 均从环境变量读取，无需硬编码。ACM 与 Zillow 走公开文件下载，
+其中 ACM 只有 .xls（OLE2/BIFF8）一种格式，由 `scripts/xls_lite.py`（纯标准库）解析，
+不引入 pandas / xlrd。
 
 ## 专题分析（自动触发规则）
 
