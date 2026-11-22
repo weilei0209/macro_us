@@ -16,6 +16,7 @@ us-macro-dashboard/data/series.json
 us-macro-dashboard/data/latest.json
 us-macro-dashboard/data/reports.json
 us-macro-dashboard/data/payrolls_revisions.json
+us-macro-dashboard/data/sep.json
 
 # ===== 看板项目：遗留的单页版（已被 site/ 多页面版取代）=====
 us-macro-dashboard/index.html

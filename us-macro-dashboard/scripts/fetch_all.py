@@ -10,7 +10,7 @@
   data/series.json           标准化后的全量序列（供渲染/分析用）
   data/latest.json           最新值快照 + 派生指标 + 专题触发状态
 """
-import os, sys, json, datetime, math
+import os, sys, json, datetime, math, time
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(BASE_DIR, "scripts"))
@@ -21,7 +21,8 @@ from indicators import (FRED_SERIES, FRED_META, BLS_SERIES, RELEASE_CALENDAR,
 from fetcher import (FredClient, BlsClient, BeaClient, CensusClient,
                      load_cache, save_cache, which_indicators_due,
                      cache_path, fetch_zillow_zori, fetch_acm_term_premium,
-                     fetch_treasury_net_issuance, fetch_nyfed_recession_prob)
+                     fetch_treasury_net_issuance, fetch_nyfed_recession_prob,
+                     fetch_sep)
 
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -442,6 +443,23 @@ def main():
         if cached:
             all_series["nyfed_rec_prob"] = cached
         log(f"  纽约联储衰退概率抓取失败({e})，用缓存")
+
+    # 3.9 美联储 SEP（点阵图 + GDP/PCE/核心PCE/联邦基金利率预测表）
+    # 一年只在 3/6/9/12 月 FOMC 会议更新 4 次，页面 240KB，本地文件 5 天内有效就不重下
+    sep_path = os.path.join(DATA_DIR, "sep.json")
+    try:
+        fresh = os.path.exists(sep_path) and (time.time() - os.path.getmtime(sep_path)) < 5 * 86400
+        if fresh:
+            log("  SEP 预测：5 天内已抓，跳过")
+        else:
+            sep = fetch_sep()
+            with open(sep_path, "w", encoding="utf-8") as f:
+                json.dump(sep, f, ensure_ascii=False, indent=1)
+            n_pts = sum(sum(v) for v in sep["dots"]["cur"].values())
+            log(f"  SEP {sep['meeting']}: 点阵图 {n_pts} 个点, "
+                f"联邦基金中位数 {sep['vars']['ffr']['median']}")
+    except Exception as e:
+        log(f"  SEP 抓取失败({e})，沿用本地已有 sep.json")
 
     # 3.5 超级核心通胀（supercore = 核心服务剔除住房）
     # 用 BLS 相对重要性加权求差：supercore = (W_S×核心服务 − W_H×住房)/(W_S−W_H)

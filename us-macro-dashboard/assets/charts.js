@@ -463,6 +463,84 @@
     return chart;
   };
 
+  // 点阵图（美联储 SEP）：x=年份、y=利率%，每个点 = 一位 FOMC 参与者
+  // data = {kind:'dots', years:['2026 年',...], cur:[[x,y,同档人数],...], prev:[...],
+  //         median_lines:[[[x1,y],[x2,y]],...], now:3.88, cur_label:'9 月', prev_label:'6 月'}
+  window.renderDotPlot = function(el, data){
+    if(!data || !data.years || !data.years.length) return;
+    var years = data.years, n = years.length;
+    var legendData = [];
+    var series = [];
+    var curSeries = {
+      name:'本次 SEP（'+(data.cur_label||'')+'）', type:'scatter', data:data.cur,
+      symbolSize:9.5, z:3,
+      itemStyle:{color:'#8b5cf6', opacity:0.95},
+      emphasis:{scale:1.25, itemStyle:{opacity:1}}
+    };
+    // 中位数横线（每年一段，官方点阵图的橙色横杠）
+    var ml = [];
+    (data.median_lines || []).forEach(function(seg){ ml.push([{coord:seg[0]}, {coord:seg[1]}]); });
+    if(ml.length){
+      curSeries.markLine = {
+        silent:true, symbol:'none', animation:false, data:ml,
+        lineStyle:{color:'#f5a623', width:2.4, type:'solid'}, label:{show:false}
+      };
+    }
+    legendData.push(curSeries.name);
+    series.push(curSeries);
+    // 当前政策利率水平（EFFR）：一条横贯全图的虚线，读"点位比现在高还是低"
+    if(data.now != null){
+      series.push({
+        name:'__now', type:'scatter', data:[], silent:true,
+        markLine:{
+          silent:true, symbol:'none', animation:false,
+          data:[{yAxis:data.now, lineStyle:{color:THEME.text3, type:'dashed', width:1.2},
+                 label:{show:true, position:'insideEndTop', color:THEME.text3, fontSize:10,
+                        formatter:'当前 '+Number(data.now).toFixed(2)+'%'}}]
+        }
+      });
+    }
+    var option = {
+      backgroundColor:THEME.bg,
+      grid:{left:52, right:30, top:46, bottom:34},
+      tooltip:{trigger:'item',
+        backgroundColor:THEME.card, borderColor:THEME.line,
+        textStyle:{color:THEME.text, fontSize:12},
+        formatter:function(p){
+          var v = p.value || [];
+          if(p.seriesName === '__now') return '';
+          var yi = Math.round(v[0]);
+          return '<div style="font-weight:600;margin-bottom:2px;">'+ (years[yi]||'') +'</div>'+
+                 p.marker + p.seriesName +'：'+ Number(v[1]).toFixed(2) +'%'+
+                 (v[2] > 1 ? '<br/><span style="opacity:.7">该档位共 '+ v[2] +' 人</span>' : '')+
+                 (v[3] != null ? '<br/><span style="opacity:.7">上一期同档 '+ v[3] +' 人</span>' : '');
+        }
+      },
+      legend:{top:0, right:0, data:legendData, textStyle:{color:THEME.text2, fontSize:11},
+        itemWidth:12, itemHeight:8, icon:'circle'},
+      xAxis:{type:'value', min:-0.55, max:n-0.45, interval:1,
+        axisLine:{lineStyle:{color:THEME.line}},
+        axisTick:{show:false},
+        splitLine:{show:false},
+        axisLabel:{color:THEME.text2, fontSize:12,
+          formatter:function(v){ return years[Math.round(v)] || ''; }}
+      },
+      yAxis:{type:'value', scale:true,
+        min: data.ymin, max: data.ymax, interval: data.ystep || 0.25,
+        axisLine:{show:false}, axisTick:{show:false},
+        splitLine:{lineStyle:{color:THEME.splitline}},
+        axisLabel:{color:THEME.text3, fontSize:11,
+          formatter:function(v){ return Number(v).toFixed(2) + '%'; }}
+      },
+      series: series
+    };
+    var chart = echarts.init(el, null, {renderer:'canvas'});
+    chart.setOption(option);
+    chartInstances.push(chart);
+    window.addEventListener('resize', function(){ chart.resize(); });
+    return chart;
+  };
+
   // ===== 瀑布图：变动归因（通用）=====
   // 口径：从"期初值 v0"出发，按 legs 顺序逐腿累加，结果恒等于"期末值 v1"，起点/终点做柱、中间腿做浮动柱。
   // 现有两张图共用：通胀页 BEI 归因、财政页 ACM 期限溢价变动归因。

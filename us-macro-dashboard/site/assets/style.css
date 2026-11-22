@@ -265,4 +265,45 @@ a{color:inherit;text-decoration:none}
   .kpi-grid{grid-template-columns:1fr 1fr}
   .metric-grid{grid-template-columns:1fr 1fr}
   .nav .update{display:none}
+  /* SEP 表 6 列在手机上必然溢出：整卡横向滚动，别把页面撑开 */
+  .sep-card{overflow-x:auto}
+  .sep-table{min-width:660px}
+}
+
+/* ===== SEP 预测表（货币页）===== */
+.sep-card{
+  background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:16px 18px 14px;margin-bottom:14px;
+}
+.sep-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px;flex-wrap:wrap}
+.sep-head .c-sub{margin-top:2px}
+.sep-legend{font-size:11px;color:var(--text3);white-space:nowrap;padding-top:4px}
+.sep-legend span{margin:0 6px;opacity:.5}
+.sep-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px;table-layout:fixed}
+.sep-table th,.sep-table td{padding:8px 10px;text-align:center;vertical-align:middle}
+.sep-table thead th{
+  color:var(--text2);font-weight:600;font-size:11.5px;
+  border-bottom:2px solid var(--line2);background:var(--card2);
+}
+.sep-table thead th.sep-var{text-align:left;width:150px;border-radius:8px 0 0 0}
+.sep-table thead th:last-child{border-radius:0 8px 0 0}
+.sep-table tbody tr:hover td,.sep-table tbody tr:hover th{background:var(--card2)}
+.sep-table th.sep-var{
+  text-align:left;font-weight:600;color:var(--text);border-bottom:1px solid var(--line);
+  font-size:12.5px;
+}
+.sep-table th.sep-var span{display:block;font-size:10.5px;color:var(--text3);font-weight:400;margin-top:2px}
+.sep-table td{border-bottom:1px solid var(--line)}
+.sep-med-line{line-height:1.25}
+.sep-med{font-size:15.5px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.sep-d{font-size:10px;margin-left:3px;font-weight:600;vertical-align:2px}
+.sep-up{color:var(--red)}
+.sep-dn{color:var(--green)}
+.sep-flat{color:var(--text3);font-weight:400}
+.sep-ct{font-size:11px;color:var(--text2);margin-top:2px;font-variant-numeric:tabular-nums}
+.sep-rng{font-size:10px;color:var(--text3);margin-top:1px;font-variant-numeric:tabular-nums}
+.sep-empty{color:var(--text3);opacity:.5}
+.sep-foot{
+  font-size:10.5px;color:var(--text3);line-height:1.7;margin-top:10px;
+  border-top:1px solid var(--line);padding-top:8px;
 }

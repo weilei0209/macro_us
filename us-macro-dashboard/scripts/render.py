@@ -752,6 +752,9 @@ def build_chart(series_data, chart):
                  "freq": "month", "month_lag": 1},
             ],
         }
+    # SEP 点阵图（货币页）
+    if cid == "mon_sep_dots":
+        return sep_dots_payload(load_sep(), series_data)
     # BEI 变动归因瀑布：把 ΔBEI 拆成名义腿 / 实际腿（可切换观察窗口）
     if cid in ("inf_bei_attr", "td_bei_attr"):
         d = bei_attribution(series_data)
@@ -1065,6 +1068,13 @@ HOME_CHARTS = [
     {"id": "chart_rrp", "title": "流动性：ON RRP 余额", "sub": "缩表终点信号，归零则提示钱荒风险", "series": ["on_rrp"], "color": "#34d399"},
 ]
 
+# SEP 点阵图（货币页单独一区，与预测表一起；不并进"核心图表"网格）
+SEP_DOTS_CHART = {
+    "id": "mon_sep_dots", "title": "点阵图：联邦基金利率路径",
+    "sub": "每个点是一位 FOMC 参与者对当年末合适联邦基金利率（目标区间中点）的判断，同一档位的多人横向并排；橙色横杠=中位数，灰色虚线=当前有效联邦基金利率（EFFR）",
+    "series": [], "color": "#8b5cf6", "wide": True,
+}
+
 THEME_CHARTS = {
     "employment": [
         {"id": "emp_payrolls", "title": "非农新增（含历史修订）", "sub": "实线=最新修订值；虚线=首次发布值与 1 次修正值（非农发布后回溯修正前 2 个月）", "series": ["payrolls"], "color": "#e5484d"},
@@ -1348,9 +1358,14 @@ def charts_html(chart_defs, series_data, data_map=None):
                           f'<div class="wf-note" id="{c["id"]}-note"></div>')
             box_cls += " wf"
             nozoom = ' data-nozoom="1"'
+        # 点阵图不放大（模态框重绘走折线管线），且给更高的画布：8 个利率档 × 5 列要留纵向空间
+        if d and d.get("kind") == "dots":
+            nozoom = ' data-nozoom="1"'
+            box_cls += " tall"
+        zoom_icon = '' if nozoom else '<span class="c-zoom" title="点击放大">⤢</span>'
         boxes.append(
             f'<div class="{card_cls}"{nozoom}><div class="c-title">{esc(c["title"])}'
-            f'<span class="c-zoom" title="点击放大">⤢</span></div>'
+            f'{zoom_icon}</div>'
             f'<div class="c-sub">{esc(c["sub"])}</div>'
             f'{note_html}{extra_html}'
             f'<div class="{box_cls}" id="{c["id"]}"></div></div>'
@@ -1379,6 +1394,12 @@ def charts_script(data_map):
         '      window.__WATERFALLS = window.__WATERFALLS || {};\n'
         '      window.__WATERFALLS[id] = {data: d, key: d.default};\n'
         '      window.renderWaterfall(el, d, d.default);\n'
+        '    } else if(d && d.kind === "dots"){\n'
+        '      if(typeof window.renderDotPlot !== "function"){\n'
+        '        el.innerHTML = \'<div style="padding:24px 8px;color:#8a97ad;font-size:12px">图表脚本版本过旧（浏览器缓存），请按 Ctrl+Shift+R 强制刷新</div>\';\n'
+        '        return;\n'
+        '      }\n'
+        '      window.renderDotPlot(el, d);\n'
         '    } else {\n'
         '      window.renderLineChart(el, d);\n'
         '    }\n'
@@ -1425,6 +1446,7 @@ def chart_meta(chart):
         "emp_hours": "来源 BLS · 单位 小时 · 周工时领先失业率与衰退（制造 vs 私营）",
         "emp_prime": "来源 BLS（CPS） · 单位 % · 黄金年龄 25-54 岁劳动参与率，剔年龄结构噪音",
         "emp_wages": "来源 BLS（经 FRED）· 单位 %（同比）· AHE 月频（构成偏差）vs ECI 季频（固定权重、美联储首选）；ECI 为季度值，点落在季首月，悬停时会标注所属季度",
+        "mon_sep_dots": "来源 美联储 FOMC（SEP Figure 3.E）· 单位 % · 点画在 0.25pp 档位的中点（如 4.13-4.37 记为 4.25）；悬停可看该档人数与上一期同档人数；点越靠上越鹰，整列的点位相对灰虚线的高度就是参与者认为今年还要加息还是降息",
     }
     cid = chart["id"]
     if cid in derived_note:
@@ -1658,6 +1680,13 @@ def render_theme(fn, title, desc, cats, latest_data, series_data):
             H.append(section_head("📊", "核心图表"))
             theme_charts_data = {}
             H.append(charts_html(charts, series_data, theme_charts_data))
+            # 货币页：SEP 预测表 + 点阵图（两者共用同一次 charts_script，避免 __CHARTS 被覆盖）
+            if key == "monetary":
+                sep = load_sep()
+                if sep:
+                    H.append(section_head("🎯", f"美联储 SEP：{_sep_date_cn(sep['meeting'])}会议预测"))
+                    H.append(sep_table_html(sep))
+                    H.append(charts_html([SEP_DOTS_CHART], series_data, theme_charts_data))
             H.append(charts_script(theme_charts_data))
         H.append(section_head("📌", "全部指标", count=sum(len(groups.get(c, [])) for c in cats)))
         H.append(metric_cards(groups, series_data, cats))
@@ -1813,6 +1842,165 @@ def render_about(latest_data, series_data, reports):
 
     H.append(page_foot())
     return "".join(H)
+
+
+# ---------------------------------------------------------------------------
+# 美联储 SEP（经济预测摘要）：最新一期的预测表 + 点阵图
+# ---------------------------------------------------------------------------
+# SEP 一年只在 3/6/9/12 月 FOMC 会议更新 4 次，数据由 fetcher.fetch_sep() 落到 data/sep.json。
+# 表格口径：Median=19 位参与者的中位数；Central tendency=去掉 3 个最高 3 个最低后的区间；
+# Range=全区间（最鸽的那位到最鹰的那位）。
+SEP_VAR_LABELS = [
+    ("gdp", "实际 GDP 增长", "Q4/Q4 同比"),
+    ("unrate", "失业率", "Q4 平均"),
+    ("pce", "PCE 通胀", "Q4/Q4 同比"),
+    ("core_pce", "核心 PCE 通胀", "剔除食品能源"),
+    ("ffr", "联邦基金利率", "目标区间中点"),
+]
+
+
+def load_sep():
+    path = os.path.join(DATA_DIR, "sep.json")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _sep_date_cn(iso):
+    try:
+        return f"{int(iso[:4])} 年 {int(iso[5:7])} 月 {int(iso[8:10])} 日"
+    except (ValueError, TypeError):
+        return iso
+
+
+def _sep_year_label(y):
+    return "更长期" if "Longer" in y else y + " 年"
+
+
+def _sep_delta(cur, prev):
+    # 本次中位数 − 上次中位数（pp）。SEP 修订幅度通常 0.1~0.3，0.05 以内视为未动
+    try:
+        d = float(cur) - float(prev)
+    except (TypeError, ValueError):
+        return ""
+    if abs(d) < 0.05:
+        return '<span class="sep-d sep-flat">—</span>'
+    cls = "sep-up" if d > 0 else "sep-dn"
+    arrow = "↑" if d > 0 else "↓"
+    return f'<span class="sep-d {cls}">{arrow}{abs(d):.1f}</span>'
+
+
+def sep_table_html(sep):
+    # SEP 预测表：每格三行（中位数 + 与上次的差 / 集中趋势 / 全区间）
+    if not sep:
+        return ""
+    years = sep["years"]
+    prev_m = ""
+    if sep.get("prev_meeting"):
+        prev_m = str(int(sep["prev_meeting"][5:7])) + " 月"
+    head = "".join(f"<th>{esc(_sep_year_label(y))}</th>" for y in years)
+    body = []
+    for key, name, note in SEP_VAR_LABELS:
+        v = sep["vars"].get(key)
+        if not v:
+            continue
+        cells = []
+        for i, _y in enumerate(years):
+            med = v["median"][i] if i < len(v["median"]) else ""
+            ct = v["central"][i] if i < len(v["central"]) else ""
+            rg = v["range"][i] if i < len(v["range"]) else ""
+            pm = v["prev_median"][i] if i < len(v["prev_median"]) else ""
+            if not (med or ct or rg):
+                cells.append('<td class="sep-empty">—</td>')
+                continue
+            med_html = f'<span class="sep-med">{esc(med)}</span>{_sep_delta(med, pm)}' if med else ""
+            cells.append(
+                f'<td><div class="sep-med-line">{med_html}</div>'
+                f'<div class="sep-ct">{esc(ct)}</div>'
+                f'<div class="sep-rng">{esc(rg)}</div></td>'
+            )
+        body.append(f'<tr><th class="sep-var"><div>{esc(name)}</div><span>{esc(note)}</span></th>'
+                    + "".join(cells) + "</tr>")
+    # 参与者人数：各年点阵合计的最大值（偶尔有人不提交某一年的预测）
+    n_part = 0
+    for yv in (sep.get("dots", {}).get("cur") or {}).values():
+        n_part = max(n_part, sum(yv))
+    card = f'''<div class="sep-card">
+  <div class="sep-head">
+    <div>
+      <div class="c-title">SEP 经济预测（{esc(_sep_date_cn(sep["meeting"]))} FOMC）</div>
+      <div class="c-sub">{n_part} 位提交预测的 FOMC 参与者（理事 + 地区联储主席）对 2026-2029 及更长期的判断</div>
+    </div>
+    <div class="sep-legend">大字=中位数<span>·</span>中字=集中趋势（去 3 高 3 低）<span>·</span>小字=全区间</div>
+  </div>
+  <table class="sep-table"><thead><tr><th class="sep-var">变量</th>{head}</tr></thead>
+  <tbody>{''.join(body)}</tbody></table>
+  <div class="sep-foot">↑↓ 为中位数相对上一次 SEP（{esc(prev_m)}）的变化，单位 pp：红=上修、绿=下修、—=未动。
+  「更长期」是参与者判断的长期中性水平，不属当年政策路径；核心 PCE 与联邦基金利率的长期预测是同一组数字（模型假设）。</div>
+</div>'''
+    return card
+
+
+def sep_dots_payload(sep, series_data):
+    # 点阵图数据：把 Figure 3.E 的"每档利率多少人"摊成一个个点
+    # x 轴是年份（0..4），同一档位的 n 个点在该列内横向排开（官方点阵图的画法）；
+    # 点距随人数自适应，最多占 0.8 个横向单位，避免人多的年份挤进相邻列
+    if not sep:
+        return {"kind": "dots", "years": [], "cur": [], "prev": []}
+    years = sep["years"]
+    buckets = sep["dots"]["buckets"]
+    cur_map = sep["dots"]["cur"]
+    prev_map = sep["dots"]["prev"]
+
+    def pack(by_year, other=None):
+        # 只画本次的点阵；上次各档的人数塞进第 4 维给 tooltip 用 —— 两次点阵叠加时
+        # 同档位的点会互相遮挡（2026 年 4.25 档本次 12 人、6 月 5 人，实心直接盖住空心）
+        pts = []
+        for xi, y in enumerate(years):
+            arr = by_year.get(y) or []
+            ref = (other or {}).get(y) or []
+            nmax = max(arr) if arr else 1
+            # 一列最多占 0.6 个单位宽：'更长期'那列有 12 个人，再宽就连到相邻年份了
+            step = min(0.11, 0.60 / max(1, nmax - 1))
+            for bi, rate in enumerate(buckets):
+                n = arr[bi] if bi < len(arr) else 0
+                if not n:
+                    continue
+                was = ref[bi] if bi < len(ref) else 0
+                for i in range(n):
+                    pts.append([round(xi + (i - (n - 1) / 2) * step, 3), rate, n, was])
+        return pts
+
+    med_lines = []
+    for i, m in enumerate(sep["vars"]["ffr"]["median"][:len(years)]):
+        try:
+            med_lines.append([[i - 0.34, float(m)], [i + 0.34, float(m)]])
+        except (TypeError, ValueError):
+            continue
+    ffr_pts = series_points(series_data.get("ffr", []))
+    now = ffr_pts["values"][-1] if ffr_pts["values"] else None
+    cur_pts = pack(cur_map, prev_map)
+    prev_pts = []
+    # y 轴刻度必须落在 0.25pp 的档位上（点的位置就是档位中点），否则刻度线会切在两点之间，
+    # 让人读不出"这一排是 4.25 还是 4.20"。上下各留一个空档做留白。
+    rates = [p[1] for p in cur_pts] or [3.0]
+    ymin = round(min(rates) - 0.25, 3)
+    ymax = round(max(rates) + 0.25, 3)
+    return {
+        "kind": "dots",
+        "ymin": ymin, "ymax": ymax, "ystep": 0.25,
+        "years": [_sep_year_label(y) for y in years],
+        "cur": cur_pts,
+        "prev": prev_pts,
+        "median_lines": med_lines,
+        "now": now,
+        "cur_label": str(int(sep["meeting"][5:7])) + " 月",
+        "prev_label": (str(int(sep["prev_meeting"][5:7])) + " 月") if sep.get("prev_meeting") else "上次",
+    }
 
 
 def phillips_scatter_data(series_data):

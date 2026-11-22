@@ -4,7 +4,7 @@
 美国宏观数据看板 - 数据拉取层
 四个官方 API 客户端 + 本地缓存 + 发布日历驱动的精准增量更新。
 """
-import os, json, time, datetime, urllib.request, urllib.parse, csv, io
+import os, json, time, datetime, urllib.request, urllib.parse, csv, io, re
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CACHE_DIR = os.path.join(BASE_DIR, "data", "cache")
@@ -529,3 +529,180 @@ if __name__ == "__main__":
     print(f"今天 {datetime.date.today()} 应拉取指标数: {len(due)}")
     for d in due:
         print("  -", d)
+
+# ---------------------------------------------------------------------------
+# 七、美联储 SEP（Summary of Economic Projections）
+# ---------------------------------------------------------------------------
+# SEP 每年只随 3/6/9/12 月 FOMC 会议更新 4 次。美联储同时提供 PDF 与"accessible version"
+# 网页版（fomcprojtabl<YYYYMMDD>.htm），网页版把表格全部摊平成 <table>，
+# 纯标准库正则就能拿到数，不用解析 PDF。
+# Table 1 = 经济预测（中位数 / 集中趋势 / 区间）；Figure 3.E = 点阵图的分布表
+# （每档利率有多少位参与者），两者拼起来就是完整的 SEP 表 + 点阵图。
+SEP_CAL_URL = "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+SEP_TBL_URL = "https://www.federalreserve.gov/monetarypolicy/fomcprojtabl{d}.htm"
+
+
+def _sep_get(url, timeout=90):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def _sep_text(html):
+    """单元格 -> 纯文本（去标签、解实体、en dash 统一成 -）。"""
+    t = re.sub(r"<[^>]+>", "", html)
+    t = (t.replace("&nbsp;", " ").replace("&amp;", "&").replace("&#8211;", "-")
+          .replace("&#8722;", "-").replace("&ndash;", "-").replace("&#160;", " "))
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _sep_cells(tbl_html):
+    """<table> -> [[{t:文本, id, headers}, ...], ...]，保留 headers 属性（点阵表靠它定位年份列）。"""
+    rows = []
+    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", tbl_html, re.S):
+        cells = []
+        for m in re.finditer(r"<t([hd])([^>]*)>(.*?)</t\1>", tr, re.S):
+            attrs, inner = m.group(2), m.group(3)
+            idm = re.search(r'id="([^"]*)"', attrs)
+            hdm = re.search(r'headers="([^"]*)"', attrs)
+            cells.append({"t": _sep_text(inner),
+                          "id": idm.group(1) if idm else "",
+                          "headers": hdm.group(1).split() if hdm else []})
+        if cells:
+            rows.append(cells)
+    return rows
+
+
+def _sep_table_by_caption(html, marker):
+    """按表前最近的标题文本定位表格：SEP 页里 <table> 没有 id，只能靠顺序 + 标题锚。"""
+    pos = html.find(marker)
+    if pos < 0:
+        return ""
+    i = html.find("<table", pos)
+    j = html.find("</table>", i)
+    return html[i:j + 8] if i > 0 and j > i else ""
+
+
+def _sep_dash(s):
+    """"2.2-2.4" -> (2.2, 2.4)；单值 "2.0" -> (2.0, 2.0)。"""
+    nums = re.findall(r"-?\d+\.?\d*", s or "")
+    if len(nums) >= 2:
+        return float(nums[0]), float(nums[1])
+    if len(nums) == 1:
+        return float(nums[0]), float(nums[0])
+    return None
+
+
+def _sep_num(s):
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def fetch_sep():
+    """抓最新一期 SEP：Table 1（中位数/集中趋势/区间）+ Figure 3.E（点阵图分布）。"""
+    cal = _sep_get(SEP_CAL_URL)
+    dates = sorted(set(re.findall(r"fomcprojtabl(\d{8})", cal)))
+    if not dates:
+        raise RuntimeError("FOMC 日历页没找到任何 SEP 链接")
+    latest = dates[-1]
+    prev = dates[-2] if len(dates) > 1 else ""
+    html = _sep_get(SEP_TBL_URL.format(d=latest))
+
+    def iso(d):
+        return f"{d[:4]}-{d[4:6]}-{d[6:]}" if d else ""
+
+    # ---- Table 1：五组预测 × 5 年 × (median / central tendency / range) ----
+    rows = _sep_cells(_sep_table_by_caption(html, "Table 1."))
+    if not rows:
+        raise RuntimeError("SEP Table 1 未取到")
+    # 年份表头：Median / Central Tendency / Range 三组各自重复一遍 5 个年份（colspan 分组），
+    # 所以这一行会有 15 个年份格，去重后才是真正的年份列表
+    years = []
+    for r in rows[:3]:
+        ys = [c["t"] for c in r if re.match(r"^(20\d\d|Longer run)$", c["t"])]
+        if len(ys) >= 4:
+            years = list(dict.fromkeys(ys))
+            break
+    if not years:
+        raise RuntimeError(f"SEP Table 1 年份表头解析失败：{[ [c['t'] for c in r] for r in rows[:3] ]}")
+
+    var_labels = [("gdp", "Change in real GDP"), ("unrate", "Unemployment rate"),
+                  ("pce", "PCE inflation"), ("core_pce", "Core PCE inflation"),
+                  ("ffr", "Federal funds rate")]
+    vars_out = {}
+    for i, r in enumerate(rows):
+        name = r[0]["t"]
+        key = None
+        for k, label in var_labels:
+            # "Core PCE inflation" 也以 "PCE inflation" 打头，先判 core
+            if name.startswith(label) and (k != "pce" or not name.startswith("Core")):
+                key = k
+                break
+        if not key or key in vars_out:
+            continue
+        vals = [c["t"] for c in r[1:]]
+        if len(vals) < len(years) * 3:
+            continue
+        n = len(years)
+        prev_vals = []
+        if i + 1 < len(rows) and rows[i + 1][0]["t"].lower().startswith("june"):
+            prev_vals = [c["t"] for c in rows[i + 1][1:]]
+        vars_out[key] = {
+            "median": vals[:n],
+            "central": vals[n:2 * n],
+            "range": vals[2 * n:3 * n],
+            "prev_median": prev_vals[:n] if len(prev_vals) >= n else [],
+        }
+    if len(vars_out) < 5:
+        raise RuntimeError(f"SEP Table 1 只解析出 {len(vars_out)} 个变量：{list(vars_out)}")
+
+    # ---- Figure 3.E：点阵图分布（每档利率有多少位参与者）----
+    f3 = _sep_cells(_sep_table_by_caption(html, "Figure 3.E."))
+    dots = {"buckets": [], "cur": {}, "prev": {}}
+    if len(f3) >= 3:
+        id2txt = {}
+        for r in f3[:2]:
+            for c in r:
+                if c["id"]:
+                    id2txt[c["id"]] = c["t"]
+        year_cols = [(c["id"], c["t"]) for r in f3[:1] for c in r
+                     if c["id"] and re.match(r"^(20\d\d|Longer Run)$", c["t"])]
+        sub_cols = {c["id"]: c["t"] for r in f3[:2] for c in r
+                    if c["id"] and c["t"] in ("June projections", "September projections")}
+        for yid, yname in year_cols:
+            dots["cur"][yname] = []
+            dots["prev"][yname] = []
+        for r in f3[2:]:
+            pair = _sep_dash(r[0]["t"])
+            if not pair:
+                continue
+            dots["buckets"].append(round((pair[0] + pair[1]) / 2, 3))
+            for c in r[1:]:
+                yid = next((h for h in c["headers"] if h in id2txt and h in dict(year_cols)), None)
+                sub = next((sub_cols[h] for h in c["headers"] if h in sub_cols), None)
+                cnt = _sep_num(c["t"]) or 0
+                if not yid or not sub:
+                    continue
+                yname = id2txt[yid]
+                key = "prev" if sub.startswith("June") else "cur"
+                while len(dots[key][yname]) < len(dots["buckets"]) - 1:
+                    dots[key][yname].append(0)
+                dots[key][yname].append(int(cnt))
+        # 补齐长度（某年可能整列缺 June 列，如 2029 只有本次）
+        for key in ("cur", "prev"):
+            for y in dots[key]:
+                while len(dots[key][y]) < len(dots["buckets"]):
+                    dots[key][y].append(0)
+
+    return {
+        "meeting": iso(latest),
+        "prev_meeting": iso(prev),
+        "years": years,
+        "vars": vars_out,
+        "dots": dots,
+        "source": "美联储 FOMC 经济预测摘要（SEP）",
+        "url": SEP_TBL_URL.format(d=latest),
+    }
+

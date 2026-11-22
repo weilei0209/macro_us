@@ -84,6 +84,7 @@ bash serve.sh 9000     # 自定义端口
 | 纽约联储 收益率曲线 | 无需 key | 未来 12 个月衰退概率（`allmonth.xls` 的 rec_prob 表，月频，Estrella-Mishkin probit；每月前两周更新） |
 | 财政部 Fiscal Data | 无需 key | 逐场拍卖明细（`auctions_query`，1979 起）：月度 bills / coupon 净发行，金额取公开市场发行额（不含 SOMA 增发） |
 | Zillow | 无需 key | ZORI 新租约租金（公开 CSV，月频） |
+| 美联储 SEP | 无需 key | 经济预测摘要（`fomcprojtabl<日期>.htm` 的 accessible 版）：GDP/PCE/核心PCE/联邦基金利率的中位数与区间（Table 1）+ 点阵图分布（Figure 3.E）；一年 4 次（3/6/9/12 月），本地 5 天内不重下 |
 
 四个 API key 均从环境变量读取，无需硬编码。纽约联储（ACM 期限溢价、收益率曲线衰退概率）
 与 Zillow 走公开文件下载，其中纽约联储两个工作簿都只有 .xls（OLE2/BIFF8）格式，
