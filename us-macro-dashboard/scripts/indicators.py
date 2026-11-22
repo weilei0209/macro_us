@@ -38,6 +38,9 @@ FRED_SERIES = {
     "participation":"CIVPART",     # 劳动参与率
     "labor_force":  "CLF16OV",     # 劳动力总量
     "emratio":      "EMRATIO",     # 就业人口比
+    # 工资两项改走 FRED：BLS 直连只取近 2 年（图表看不出周期），FRED 有完整历史且增量模式能更新
+    "ahe":          "CES0500000003",  # 平均时薪（私营非农，月，2006-03 起）
+    "eci_wages":    "ECIWAG",      # 雇佣成本指数-工资（私营，季，2001-Q1 起）
     "jolts_open":   "JTSJOL",      # JOLTS 岗位空缺
     "claims":       "ICSA",        # 首申失业金（周）
     # ---- 就业：行业细分（CES，用于扩散指数 / 周期敏感行业）----
@@ -114,6 +117,8 @@ FRED_META = {
     "participation":("劳动参与率", "就业"),
     "labor_force":("劳动力总量", "就业"),
     "emratio":    ("就业人口比", "就业"),
+    "ahe":        ("平均时薪", "就业"),
+    "eci_wages":  ("雇佣成本指数·工资", "就业"),
     "jolts_open": ("JOLTS 岗位空缺", "就业"),
     "claims":     ("首申失业金", "就业"),
     "manemp":     ("制造业就业", "就业"),
@@ -165,7 +170,6 @@ FRED_META = {
 # ---------------------------------------------------------------------------
 BLS_SERIES = {
     "payrolls_bls":      "CES0000000001",  # 非农总就业（可与 FRED PAYEMS 互证）
-    "ahe":               "CES0500000003",  # 平均时薪（私营非农）
     "avg_weekly_hours":  "CES0500000002",  # 平均周工时（私营非农）
     "cpi_bls":           "CUUR0000SA0",    # CPI-U 未季调
     "cpi_sa":            "CUSR0000SA0",    # CPI-U 季调
@@ -174,7 +178,7 @@ BLS_SERIES = {
     "cpi_shelter":       "CUUR0000SAH",    # 住房（shelter）
     "cpi_energy":        "CUUR0000SA0E",   # 能源
     "cpi_food":          "CUUR0000SA0L1",  # 食品
-    "eci_wages":         "CIS2020000000000I", # 雇佣成本指数-工资（季度）
+    # eci_wages 已改走 FRED（ECIWAG）：BLS 直连窗口只有近 2 年
     "unrate_bls":        "LNS14000000",    # 失业率 U3
     "u6_bls":            "LNS13327709",    # U6
     "participation_bls": "LNS11300000",    # 劳动参与率
@@ -234,7 +238,7 @@ RELEASE_CALENDAR = {
     "participation":("FRED", "monthly_1st_fri"),
     "labor_force":  ("FRED", "monthly_1st_fri"),
     "emratio":      ("FRED", "monthly_1st_fri"),
-    "ahe":          ("BLS",  "monthly_1st_fri"),
+    "ahe":          ("FRED", "monthly_1st_fri"),
     "avg_weekly_hours":("BLS","monthly_1st_fri"),
     "jolts_open":   ("FRED", "monthly_jolts"),
     # ---- 就业行业细分 / 周工时 / 黄金年龄参与率（随非农报告发布）----
@@ -290,7 +294,7 @@ RELEASE_CALENDAR = {
     "pdfp_qoq":     ("FRED", "quarterly"),
     "gdi":          ("FRED", "quarterly"),
     "inv_private":  ("FRED", "quarterly"),
-    "eci_wages":    ("BLS",  "quarterly"),
+    "eci_wages":    ("FRED", "quarterly"),
 }
 
 # ---------------------------------------------------------------------------
@@ -359,7 +363,7 @@ INDICATOR_META = {
     "emratio":      {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},
     "jolts_open":   {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
     "claims":       {"source": "劳工部 DOL",   "unit": "千人", "scale": 0.001},  # 原始：人(Number)
-    "ahe":          {"source": "BLS 劳工统计局", "unit": "美元/时", "scale": 1},
+    "ahe":          {"source": "BLS（经 FRED）", "unit": "美元/时", "scale": 1},
     "avg_weekly_hours": {"source": "BLS 劳工统计局", "unit": "小时", "scale": 1},
     # ---- 就业行业细分 / 周工时 / 黄金年龄参与率 ----
     "manemp":       {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
@@ -412,7 +416,7 @@ INDICATOR_META = {
     "inv_sales":    {"source": "Census 人口普查局", "unit": "倍", "scale": 1},
     "saving_rate":  {"source": "BEA 经济分析局", "unit": "%", "scale": 1},
     "housing_starts":{"source": "Census 人口普查局", "unit": "千套", "scale": 1},
-    "eci_wages":    {"source": "BLS 劳工统计局", "unit": "指数", "scale": 1},
+    "eci_wages":    {"source": "BLS（经 FRED）", "unit": "指数", "scale": 1},
 }
 
 # 需要做缩放（scale != 1）的指标：抓取后对 series 与 latest 统一缩放

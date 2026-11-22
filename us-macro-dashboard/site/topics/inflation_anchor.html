@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="../assets/koala-us-macro-180.png">
 <link rel="stylesheet" href="../assets/style.css?v=1795249960">
 <script src="../assets/echarts.min.js?v=1794710697"></script>
-<script src="../assets/charts.js?v=1795265093"></script>
+<script src="../assets/charts.js?v=1795314449"></script>
 </head><body>
 <div class="nav"><div class="nav-inner">
   <a href="../index.html" class="logo"><span class="logo-dot"></span><h1>美国宏观数据看板</h1></a>
@@ -24,7 +24,7 @@
     <a href="../about.html">关于</a>
   </div>
   <div class="spacer"></div>
-  <div class="update">上次更新<br><b>2026-11-21</b></div>
+  <div class="update">上次更新<br><b>2026-11-22</b></div>
 </div></div>
 <div class="wrap">
 <div class="pagehead"><div class="crumb"><a href="../topics.html" style="color:var(--cyan)">← 返回专题列表</a></div><h2>通胀锚定是否动摇（5y5y 远期通胀补偿）</h2><span class="t-badge ok" style="font-size:12px;padding:3px 12px">正常</span></div><div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px"><span class="t-data">current = 2.10</span><span class="t-data">avg_12m = 2.17</span><span class="t-data">dev_bp = -7.00</span></div><div class="section-head"><span class="icon">📝</span><h3>分析结论</h3><span class="line"></span></div><div class="tip"><div class="tip-body" style="font-size:14px;line-height:1.9">5y5y 远期通胀补偿当前 2.10%，近12个月均值 2.17%，偏离 -7bp（回落）。仍在历史区间内，通胀预期大致锚定。</div></div><div class="section-head"><span class="icon">📌</span><h3>分析框架</h3><span class="line"></span></div><div class="tip"><div class="tip-body">锚定不是看绝对水平，而是看长端预期对短期通胀的敏感性。5y5y 是最严格的锚定指标。</div></div><div class="section-head"><span class="icon">📊</span><h3>数据图表</h3><span class="line"></span></div><div class="chart-grid"><div class="chart-card"><div class="c-title">5y5y 远期通胀补偿<span class="c-zoom" title="点击放大">⤢</span></div><div class="c-sub">最严格的锚定指标，偏离近1年均值超 50bp 视为动摇</div><div class="c-meta">来源 美联储 · 单位 % · 当期数据（每日）</div><div class="chart-box" id="td_fwd5y5y"></div></div><div class="chart-card"><div class="c-title">10Y 盈亏平衡通胀率<span class="c-zoom" title="点击放大">⤢</span></div><div class="c-sub">市场定价的通胀预期</div><div class="c-meta">来源 美联储 · 单位 % · 当期数据（每日）</div><div class="chart-box" id="td_bei"></div></div><div class="chart-card wide" data-nozoom="1"><div class="c-title">BEI 变动归因：名义腿 vs 实际腿<span class="c-zoom" title="点击放大">⤢</span></div><div class="c-sub">ΔBEI = Δ名义 − Δ实际，看下跌是通胀补偿降温还是实际利率挤压</div><div class="c-meta">来源 美国财政部 / 美联储 · 单位 bp · BEI = 名义 10Y（DGS10）− TIPS 实际 10Y（DFII10），两腿取同一交易日收盘；实际腿贡献 = −Δ实际；柱色随贡献方向：推高 BEI 为红、压低为绿</div><div class="wf-tabs" data-target="td_bei_attr"><button class="wf-tab" data-key="1w">近 1 周</button><button class="wf-tab active" data-key="1m">近 1 月</button><button class="wf-tab" data-key="3m">近 3 月</button><button class="wf-tab" data-key="6m">近 6 月</button><button class="wf-tab" data-key="1y">近 1 年</button></div><div class="wf-note" id="td_bei_attr-note"></div><div class="chart-box wf" id="td_bei_attr"></div></div></div><script>

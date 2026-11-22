@@ -63,18 +63,34 @@
     return m ? (m[1] + '年' + parseInt(m[2],10) + '月' + parseInt(m[3],10) + '日') : v;
   }
 
-  function tooltipFormatter(params, releaseRule, unit, dayFmt){
+  // 日期 -> 季度标签（2026-07-01 → 2026 Q3）
+  function quarterLabel(v){
+    var m = String(v).match(/^(\d{4})-(\d{2})/);
+    return m ? (m[1] + ' Q' + Math.ceil(parseInt(m[2],10)/3)) : '';
+  }
+
+  function tooltipFormatter(params, releaseRule, unit, dayFmt, period, seriesMeta){
     if(!params || !params.length) return '';
-    var isQuarterly = releaseRule && releaseRule.indexOf('统计季度') !== -1;
+    // 横轴周期判定：显式 period 优先。像工资图（AHE 月频 + ECI 季频）规则文案里
+    // 同时出现"统计月"和"统计季度"，只按"统计季度"判断会把 2026-02 这类月份点
+    // 渲染成只有"2026"（formatPeriod 对非季首月返回年份）。
+    var isQuarterly;
+    if(period === 'quarter') isQuarterly = true;
+    else if(period === 'month' || period === 'day') isQuarterly = false;
+    else isQuarterly = !!(releaseRule && releaseRule.indexOf('统计季度') !== -1
+                          && releaseRule.indexOf('统计月') === -1);
     var period = dayFmt ? formatDay(params[0].axisValue) : formatPeriod(params[0].axisValue, isQuarterly);
     var s = '<div style="font-weight:600;margin-bottom:2px;">统计期：' + period + '</div>';
     params.forEach(function(p){
       if(p.seriesType === 'custom') return;   // 衰退区间标注不是数据序列，不进 tooltip
+      if(p.value==null || p.value==='') return;   // 缺值不占一行（多频率共图时很常见）
       var v;
-      if(p.value==null || p.value==='') v = '—';
-      else if(unit === 'bp') v = fmtBp(p.value) + 'bp';   // 差值类图表带符号，便于分辨正负
+      if(unit === 'bp') v = fmtBp(p.value) + 'bp';   // 差值类图表带符号，便于分辨正负
       else v = Number(p.value).toFixed(2);
-      s += p.marker + p.seriesName + '：' + v + '<br/>';
+      // 季频序列（如 ECI 落在月频横轴上）补注对应季度，避免把 7 月的季度值读成 7 月单月
+      var meta = seriesMeta && seriesMeta[p.seriesIndex];
+      var suffix = (meta && meta.freq === 'quarter') ? '（' + quarterLabel(params[0].axisValue) + '）' : '';
+      s += p.marker + p.seriesName + suffix + '：' + v + '<br/>';
     });
     if(releaseRule){
       s += '<div style="margin-top:4px;font-size:11px;opacity:0.75;border-top:1px solid rgba(128,128,128,0.3);padding-top:3px;">' + releaseRule + '</div>';
@@ -183,7 +199,7 @@
       tooltip:{trigger:'axis',
         backgroundColor:THEME.card, borderColor:THEME.line,
         textStyle:{color:THEME.text, fontSize:12},
-        formatter:function(params){ return tooltipFormatter(params, data.release_rule, data.unit, data.day_format === true); }
+        formatter:function(params){ return tooltipFormatter(params, data.release_rule, data.unit, data.day_format === true, data.period, data.series); }
       },
       legend:{top:0, right:0, textStyle:{color:THEME.text2, fontSize:fs}, itemWidth:14, itemHeight:8},
       xAxis:{type:'category', data:data.dates, boundaryGap:false,

@@ -651,10 +651,11 @@ def build_chart(series_data, chart):
         eci_yoy = yoy_by_date(series_data.get("eci_wages", []))
         dates = ahe_yoy["dates"]
         eci_aligned = align_series(dates, [{"date": d, "value": v} for d, v in zip(eci_yoy["dates"], eci_yoy["values"])])
-        return {"dates": dates, "release_rule": "AHE 统计月数据 · ECI 统计季度数据 · 同比增速对比", "series": [
+        return {"dates": dates, "release_rule": "AHE 月频（次月首周周五）· ECI 季频（次季首月月末）· 同比增速对比",
+                "period": "month", "series": [
             {"name": "平均时薪 AHE 同比", "values": ahe_yoy["values"], "color": "#e5484d"},
             {"name": "雇佣成本指数 ECI 同比", "values": eci_aligned, "color": "#8b5cf6",
-             "showSymbol": True, "connectNulls": True},
+             "showSymbol": True, "connectNulls": True, "freq": "quarter"},
         ]}
     # 剥洋葱三层：实际 GDP → 最终销售（剔库存）→ 私营国内最终购买（再剔净出口+政府）
     if cid == "gro_gdp":
@@ -1082,7 +1083,7 @@ def chart_meta(chart):
         "emp_cyclical": "来源 BLS · 单位 千人（月度新增） · 工业新增=制造+建筑+采矿环比增量，双轴对比非农新增的周期性",
         "emp_hours": "来源 BLS · 单位 小时 · 周工时领先失业率与衰退（制造 vs 私营）",
         "emp_prime": "来源 BLS（CPS） · 单位 % · 黄金年龄 25-54 岁劳动参与率，剔年龄结构噪音",
-        "emp_wages": "来源 BLS · 单位 % · AHE（构成偏差）vs ECI（固定权重、美联储首选），同比对比",
+        "emp_wages": "来源 BLS（经 FRED）· 单位 %（同比）· AHE 月频（构成偏差）vs ECI 季频（固定权重、美联储首选）；ECI 为季度值，点落在季首月，悬停时会标注所属季度",
     }
     cid = chart["id"]
     if cid in derived_note:
