@@ -21,7 +21,7 @@ from indicators import (FRED_SERIES, FRED_META, BLS_SERIES, RELEASE_CALENDAR,
 from fetcher import (FredClient, BlsClient, BeaClient, CensusClient,
                      load_cache, save_cache, which_indicators_due,
                      cache_path, fetch_zillow_zori, fetch_acm_term_premium,
-                     fetch_treasury_net_issuance)
+                     fetch_treasury_net_issuance, fetch_nyfed_recession_prob)
 
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -428,6 +428,21 @@ def main():
                 all_series[k] = cached
         log(f"  美债拍卖净发行抓取失败({e})，用缓存")
 
+    # 3.8 纽约联储收益率曲线模型：未来 12 个月衰退概率（月度，非 FRED）
+    # 增长页"期限利差预测衰退"那张图的右轴；自变量是 10Y − 3M 利差，每月前两周更新
+    try:
+        yc = fetch_nyfed_recession_prob()
+        for k, v in yc.items():
+            all_series[k] = v
+            save_cache(k, v)
+        rp = yc["nyfed_rec_prob"]
+        log(f"  纽约联储衰退概率: {len(rp)} 个月, 最新 {rp[-1]['date'][:7]} = {rp[-1]['value']:.1f}%")
+    except Exception as e:
+        cached = load_cache("nyfed_rec_prob")
+        if cached:
+            all_series["nyfed_rec_prob"] = cached
+        log(f"  纽约联储衰退概率抓取失败({e})，用缓存")
+
     # 3.5 超级核心通胀（supercore = 核心服务剔除住房）
     # 用 BLS 相对重要性加权求差：supercore = (W_S×核心服务 − W_H×住房)/(W_S−W_H)
     # 两个分项基期同为 1982-1984=100，故加权结果仍是同基期指数，可直接算同比/环比。
@@ -562,7 +577,7 @@ def main():
     latest = {}
     # 派生序列（仅供图表/专题使用，不作为独立指标卡展示）
     DERIVED_SERIES_SKIP = {"sahm_rule", "emp_diffusion", "goods_emp",
-                           "acm_tp10", "acm_rn10", "acm_y10",
+                           "acm_tp10", "acm_rn10", "acm_y10", "nyfed_rec_prob",
                            "tbills_gross", "tbills_mat", "tcoupon_gross", "tcoupon_mat"}
     for ind, series in all_series.items():
         if ind in DERIVED_SERIES_SKIP:

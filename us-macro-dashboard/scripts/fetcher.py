@@ -394,6 +394,71 @@ def fetch_treasury_net_issuance(today=None):
 
 
 # ---------------------------------------------------------------------------
+# 五之二、纽约联储收益率曲线模型 → 未来 12 个月衰退概率（月度）
+# ---------------------------------------------------------------------------
+# 官方页面 https://www.newyorkfed.org/research/capital_markets/ycfaq.html
+# 只发布 .xls（OLE2/BIFF8），由 xls_lite 解析；"Monthly data" 即此文件
+YCFAQ_URL = ("https://www.newyorkfed.org/medialibrary/media/research/"
+             "capital_markets/allmonth.xls")
+YCFAQ_START = "1960-01-01"
+
+
+def fetch_nyfed_recession_prob():
+    """纽约联储收益率曲线模型：未来 12 个月衰退概率（月度，%）。
+
+    模型 = Estrella-Mishkin (1996) 的 probit：自变量是 10Y 与 3M 国债的利差
+    （3M 按 bond-equivalent basis 折算），被解释变量是未来 12 个月是否进入衰退。
+    工作簿 rec_prob 表列：Date（Excel 序列号）/ 10Y / 3M / 3M BEY / Spread / Rec_prob / NBER_Rec。
+
+    坑：表尾有一批日期自动递增、概率由表内公式引用最后有效值算出来的空行
+    （2026-11 之后），必须截到最后一个 Spread 非空的月份，否则等于把模型
+    "凭空外推"的 12 个月画进图里。
+    """
+    from xls_lite import read_sheet
+
+    req = urllib.request.Request(YCFAQ_URL, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        blob = r.read()
+    if not blob or len(blob) < 20000:
+        raise RuntimeError(f"收益率曲线工作簿下载异常，仅 {len(blob)} 字节")
+    raw_path = os.path.join(CACHE_DIR, "ycfaq_allmonth.xls")
+    with open(raw_path, "wb") as f:
+        f.write(blob)
+
+    rows = read_sheet(raw_path, "rec_prob")
+    if not rows:
+        raise RuntimeError("rec_prob 表为空")
+    head = [str(x).strip().upper() if x is not None else "" for x in rows[0]]
+    try:
+        i_date = head.index("DATE")
+        i_spread = head.index("SPREAD")
+        i_prob = head.index("REC_PROB")
+    except ValueError:
+        raise RuntimeError(f"rec_prob 表头不符合预期：{head}")
+
+    out = []
+    # Excel 1900 日期系统（含 1900 闰年 bug，故基准取 1899-12-30）
+    base = datetime.date(1899, 12, 30)
+    for row in rows[1:]:
+        if len(row) <= max(i_date, i_spread, i_prob):
+            continue
+        serial, spread, prob = row[i_date], row[i_spread], row[i_prob]
+        if not isinstance(serial, (int, float)):
+            continue
+        if not isinstance(spread, (int, float)) or spread is None:
+            continue          # 表尾公式行：没有当月的利差，概率是外推值
+        if not isinstance(prob, (int, float)):
+            continue
+        date = (base + datetime.timedelta(days=int(serial))).isoformat()
+        if date < YCFAQ_START:
+            continue
+        out.append({"date": date, "value": round(float(prob) * 100, 2)})
+    if not out:
+        raise RuntimeError("衰退概率解析结果为空")
+    return {"nyfed_rec_prob": out}
+
+
+# ---------------------------------------------------------------------------
 # 六、发布日历判定
 # ---------------------------------------------------------------------------
 def _nth_weekday(year, month, weekday, nth):

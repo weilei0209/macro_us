@@ -487,6 +487,55 @@ def nber_recession_bands(dates):
     return _merge_runs(dates, hit)
 
 
+def _step_fill_months(dates, points):
+    """月度点按月末日期前向填充到日频日期轴（月末当天起用该月值，次月才换）。
+
+    月末日期天然满足"次月才可见"：2026-10-31 的值从 10-31 起生效，
+    纽约联储每月前两周发布上月数据，故不前视。
+    """
+    pts = sorted(points)
+    out, j = [], -1
+    for d in dates:
+        while j + 1 < len(pts) and pts[j + 1][0] <= d:
+            j += 1
+        out.append(pts[j][1] if j >= 0 else None)
+    return out
+
+
+def nber_bands_any(dates):
+    """NBER 月度衰退区间 → 日期轴上的连续段（日频/月频通用，按 'YYYY-MM' 前缀比较）。"""
+    out = []
+    for s, e in NBER_RECESSIONS:
+        hi = _ym(e, 1)
+        hi_s = f"{hi[0]:04d}-{hi[1]:02d}"
+        idx = [i for i, d in enumerate(dates) if s <= d[:7] < hi_s]
+        if idx:
+            out.append([dates[idx[0]], dates[idx[-1]]])
+    return out
+
+
+def yc_recession_series(series_data):
+    """期限利差预测衰退：10Y − 3M 利差（日频）+ 纽约联储模型的未来 12 个月衰退概率（月度）。
+
+    模型见 https://www.newyorkfed.org/research/capital_markets/ycfaq.html
+    （Estrella-Mishkin 1996 的 probit）：自变量是 10Y 与 3M 国债利差，3M 按
+    bond-equivalent basis 折算；被解释变量是未来 12 个月是否进入衰退。
+
+    两条线的数据源略有差别：图上利差用 FRED T10Y3M 的日频收盘（能看到倒挂当天的
+    深度），概率用纽约联储月度模型输出（其自变量是月均利差）——一个看"今天倒挂多深"，
+    一个看"按月度平均，未来一年衰退概率多少"。
+    """
+    pts = [p for p in series_data.get("t10y3m", []) if p["value"] is not None]
+    if len(pts) < 250:
+        return None
+    dates = [p["date"] for p in pts]
+    spread = [round(p["value"], 2) for p in pts]
+    prob_pts = [(p["date"], p["value"]) for p in series_data.get("nyfed_rec_prob", [])
+                if p["value"] is not None]
+    prob = _step_fill_months(dates, prob_pts)
+    return {"dates": dates, "spread": spread, "prob": prob, "bands": nber_bands_any(dates)}
+
+
 # BEI 变动归因的观察窗口：(key, 显示名, 交易日数)
 BEI_ATTR_WINDOWS = [
     ("1w", "近 1 周", 5),
@@ -677,6 +726,30 @@ def build_chart(series_data, chart):
                  "unit": "%"},
                 {"name": "g（实际 GDP 同比）", "values": d["g"], "color": "#34d399",
                  "unit": "%", "step": "end", "freq": "quarter", "quarter_lag": 1},
+            ],
+        }
+    # ---- 期限利差预测衰退（增长页）----
+    # 左轴 10Y−3M 日频利差、右轴纽约联储月度衰退概率、背景 NBER 衰退柱
+    if cid == "gro_yc":
+        d = yc_recession_series(series_data)
+        if not d:
+            return {"dates": [], "series": []}
+        return {
+            "dates": d["dates"],
+            "release_rule": "利差 FRED T10Y3M（日频）；概率为纽约联储收益率曲线模型的月度输出"
+                            "（每月前两周更新，阶梯延续）；灰柱为 NBER 认定的衰退区间",
+            "dual_axis": True, "right_pct": True, "zero_line": True,
+            # 1982 年才有利差数据，NBER 区间从 1990 起；默认 1990 起，滑块可拖回
+            "zoom_start": "1990-01-01", "show_slider": True, "xfmt": "ym",
+            "day_format": True,
+            "bands": [{"name": "NBER 衰退", "color": "#6b7280",
+                       "fill": "rgba(107,114,128,0.22)", "ranges": d["bands"]}],
+            "series": [
+                {"name": "10Y − 3M 期限利差", "values": d["spread"], "color": "#3b82f6",
+                 "unit": "%", "no_area": True},
+                {"name": "未来 12 个月衰退概率", "values": d["prob"], "color": "#e5484d",
+                 "unit": "%", "digits": 1, "yAxisIndex": 1, "area": True,
+                 "freq": "month", "month_lag": 1},
             ],
         }
     # BEI 变动归因瀑布：把 ΔBEI 拆成名义腿 / 实际腿（可切换观察窗口）
@@ -979,6 +1052,7 @@ THEME_CHARTS = {
         {"id": "gro_gdp", "title": "实际 GDP：剥洋葱三层（GDP / FGDP / PDFP）", "sub": "逐级剔除库存变化 → 净出口与政府支出，越往里越接近真实内需；水平值（十亿链式美元）", "series": ["gdp_real", "fgdp", "pdfp"], "color": "#3b82f6", "wide": True},
         {"id": "gro_qoq", "title": "GDP 环比折年：剥洋葱三层", "sub": "均 BEA 季调折年率。GDP 的摆动常由库存与净出口造成，PDFP 才是内需；背景柱：红=技术性衰退、蓝=NBER 衰退（默认 2021 年起，左拖滑块可见 2008/2020 段）", "series": ["gdp_qoq", "fgdp_qoq", "pdfp_qoq"], "color": "#e5484d", "wide": True},
         {"id": "gro_rg", "title": "r vs g", "sub": "r = 10Y TIPS 实际利率（日频）；g = 实际 GDP 同比（季频，按发布时点阶梯延续）。r<g 时可自然化债", "series": ["tips10y", "gdp_real"], "color": "#3b82f6", "wide": True},
+        {"id": "gro_yc", "title": "期限利差预测衰退（10Y − 3M）", "sub": "左轴：10Y − 3M 利差（日频，跌破 0 = 倒挂）；右轴：纽约联储 probit 模型给出的未来 12 个月衰退概率（月度）。灰柱 = NBER 认定的衰退区间", "series": ["t10y3m"], "color": "#3b82f6", "wide": True},
     ],
     "fiscal": [
         {"id": "fis_rg", "title": "r - g 化债空间", "sub": "r = 10Y TIPS 实际利率（日频）· g = 实际 GDP 同比（季频，阶梯延续）", "series": ["tips10y", "gdp_real"], "color": "#3b82f6"},
@@ -1300,6 +1374,7 @@ def chart_meta(chart):
         "fis_acm_attr": "来源 纽约联储（ACM）· 单位 bp（柱）/% （端点）· 恒等式 Y(10) = RN(10) + TP(10)，故 Δ10Y = Δ期限溢价 + Δ预期路径，两腿相加精确等于长端变动、无残差；三列取同一交易日；柱色随贡献方向：推高 10Y 为红、压低为绿",
         "fis_rg": "来源 美国财政部 / BEA · 单位 % · g 取 4 季度同比，按季末后约 4 周（BEA 初值发布）阶梯延续，不提前使用未公布数据；r<g 的时段债务率自然下降，r>g 需靠财政紧缩或通胀消化",
         "gro_rg": "来源 美国财政部 / BEA · 单位 % · g 取 4 季度同比，按季末后约 4 周（BEA 初值发布）阶梯延续，不提前使用未公布数据；r<g 的时段债务率自然下降，r>g 需靠财政紧缩或通胀消化",
+        "gro_yc": "来源 纽约联储（收益率曲线模型）/ 美联储（FRED T10Y3M）· 左轴 %（利差）、右轴 %（概率）· 模型为 Estrella-Mishkin (1996) probit：用 10Y 与 3M 国债利差（3M 按 bond-equivalent basis 折算）估计未来 12 个月进入衰退的概率；利差为日频 T10Y3M 收盘，概率为纽约联储月度输出（自变量是月均利差，故与图上日频利差略有差异）；倒挂后 6~18 个月通常出现衰退，但概率高≠必然衰退（1966/1998 倒挂未伴随衰退）",
         "chart_rg": "来源 美国财政部 / BEA · 单位 % · g 取 4 季度同比，按季末后约 4 周（BEA 初值发布）阶梯延续，不提前使用未公布数据；r<g 的时段债务率自然下降，r>g 需靠财政紧缩或通胀消化",
         "gro_gdp": "来源 BEA 经济分析局 · 单位 十亿链式 2017 美元 · GDP=总量；FGDP（Final Sales of Domestic Product）=剔除私人库存变化；PDFP（Private Domestic Final Purchases）=再剔净出口与政府支出，即“核心 GDP”。三者水平值之差 = 库存、净出口、政府各自的贡献",
         "gro_qoq": "来源 BEA · 单位 %（季调年化率）· 三条均为官方环比折年：GDP（A191RL）→ FGDP 最终销售（A190RL，剔库存）→ PDFP（再剔净出口与政府），GDP 与 PDFP 的缺口 = 库存+净出口+政府。背景柱：红=技术性衰退（连续两季负增长，按当前修订数据；2022 年那两季负增长已被 BEA 基准修订抹平）、蓝=NBER 商业周期委员会认定区间（2001/2008/2020）",

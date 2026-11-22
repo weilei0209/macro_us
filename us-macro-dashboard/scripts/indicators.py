@@ -266,6 +266,7 @@ RELEASE_CALENDAR = {
     "cpi_rent":     ("FRED", "monthly_mid"),
     "cpi_shelter":  ("FRED", "monthly_mid"),
     "zori":         ("Zillow", "monthly_mid"),
+    "nyfed_rec_prob": ("纽约联储", "monthly_mid"),   # 收益率曲线衰退概率，每月前两周更新
     "cpi_bls":      ("BLS",  "monthly_mid"),
     "cpi_sa":       ("BLS",  "monthly_mid"),
     "cpi_core_bls": ("BLS",  "monthly_mid"),
@@ -349,6 +350,8 @@ INDICATOR_META = {
     "acm_tp10":     {"source": "纽约联储（ACM）", "unit": "%", "scale": 1},
     "acm_rn10":     {"source": "纽约联储（ACM）", "unit": "%", "scale": 1},
     "acm_y10":      {"source": "纽约联储（ACM）", "unit": "%", "scale": 1},
+    # 收益率曲线模型的未来 12 个月衰退概率（allmonth.xls 解析，不在 FRED 上）
+    "nyfed_rec_prob": {"source": "纽约联储（收益率曲线模型）", "unit": "%", "scale": 1},
     "mortgage30":   {"source": "房地美",       "unit": "%", "scale": 1},
     "hy_spread":    {"source": "ICE BofA",     "unit": "百分点", "scale": 1},
     "vix":          {"source": "CBOE",         "unit": "指数", "scale": 1},

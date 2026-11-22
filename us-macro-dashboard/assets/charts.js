@@ -72,6 +72,15 @@
     return y + ' Q' + q;
   }
 
+  // 日期 -> 月份标签，lag 用于"阶梯延续"的月频序列（当期读到的是上月的值）
+  function monthLabel(v, lag){
+    var m = String(v).match(/^(\d{4})-(\d{2})/);
+    if(!m) return '';
+    var y = parseInt(m[1],10), mo = parseInt(m[2],10) - (lag || 0);
+    while(mo <= 0){ mo += 12; y -= 1; }
+    return y + '年' + mo + '月';
+  }
+
   function tooltipFormatter(params, releaseRule, unit, dayFmt, period, seriesMeta, tipExtra){
     if(!params || !params.length) return '';
     // 横轴周期判定：显式 period 优先。像工资图（AHE 月频 + ECI 季频）规则文案里
@@ -102,8 +111,12 @@
         v = Number(p.value).toFixed(meta.digits == null ? 2 : meta.digits) + '%';
       }else if(unit === 'bp') v = fmtBp(p.value) + 'bp';   // 差值类图表带符号，便于分辨正负
       else v = Number(p.value).toFixed(2);
-      var suffix = (meta && meta.freq === 'quarter')
-        ? '（' + quarterLabel(params[0].axisValue, meta.quarter_lag) + '）' : '';
+      var suffix = '';
+      if(meta && meta.freq === 'quarter'){
+        suffix = '（' + quarterLabel(params[0].axisValue, meta.quarter_lag) + '）';
+      }else if(meta && meta.freq === 'month'){
+        suffix = '（' + monthLabel(params[0].axisValue, meta.month_lag) + '）';
+      }
       s += p.marker + p.seriesName + suffix + '：' + v + '<br/>';
     });
     // 附加明细（如净发行背后的"发行 X / 到期 Y"），让净额可追溯
@@ -184,8 +197,11 @@
         lineStyle:{width: big?2.5:2, color:s.color, type: dashed ? 'dashed' : 'solid'},
         itemStyle:{color:s.color},
         // 单序列默认加淡色面积；零值上下反复穿越的序列（如期限溢价）用 no_area 关掉，
-        // 否则面积会从 0 轴一路铺到负值区，把走势压扁
-        areaStyle: (i===0 && data.series.length===1 && data.no_area !== true) ? {color:s.color, opacity:0.15} : null,
+        // 否则面积会从 0 轴一路铺到负值区，把走势压扁。
+        // 序列级 s.area 用于双轴图里想强调"风险量"的那条（如衰退概率）
+        areaStyle: (s.area === true)
+          ? {color:s.color, opacity:0.12}
+          : ((i===0 && data.series.length===1 && data.no_area !== true) ? {color:s.color, opacity:0.15} : null),
         emphasis:{focus:'series'},
         yAxisIndex: yi
       };
