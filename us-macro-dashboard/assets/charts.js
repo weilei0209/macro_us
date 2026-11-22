@@ -109,6 +109,10 @@
         v = (n0 > 0 ? '+' : (n0 < 0 ? '−' : '')) + txt + ' bn';
       }else if(su === '%'){
         v = Number(p.value).toFixed(meta.digits == null ? 2 : meta.digits) + '%';
+      }else if(su === 'bp'){
+        // 利差类序列（如 SOFR−FFR）带符号，正负就是钱松钱紧的方向
+        var n1 = Number(p.value);
+        v = (n1 > 0 ? '+' : (n1 < 0 ? '−' : '')) + Math.abs(n1).toFixed(meta.digits == null ? 0 : meta.digits) + 'bp';
       }else if(unit === 'bp') v = fmtBp(p.value) + 'bp';   // 差值类图表带符号，便于分辨正负
       else v = Number(p.value).toFixed(2);
       var suffix = '';
@@ -373,14 +377,14 @@
     }
 
     if(data.dual_axis){
-      var left = rangeFor(0), right = rangeFor(1, data.right_pct === true);
+      var left = rangeFor(0, data.floor_zero === true), right = rangeFor(1, data.right_pct === true);
       var axes = [{}, {}];
       if(left){ axes[0] = { min: left.min, max: left.max }; }
       if(right){ axes[1] = { min: right.min, max: right.max }; }
       chart.setOption({ yAxis: axes });
       return;
     }
-    var r = rangeFor(0);
+    var r = rangeFor(0, data.floor_zero === true);
     if(r) chart.setOption({ yAxis:{ min: r.min, max: r.max } });
   }
 

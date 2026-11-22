@@ -712,7 +712,7 @@ def build_chart(series_data, chart):
     # ---- r − g 化债空间（财政页 / 增长页共用）----
     # r 日频、g 季频：g 按"[季末+发布滞后]阶梯"前向填充到日频，画 step 线，
     # 否则季度值散在 6000 个交易日的横轴上，一年只有 4 个孤立点，看着像"没数据"
-    if cid in ("fis_rg", "gro_rg", "chart_rg"):
+    if cid in ("fis_rg", "gro_rg", "chart_rg", "td_rg"):
         d = rg_series(series_data)
         if not d:
             return {"dates": [], "series": []}
@@ -1008,13 +1008,51 @@ def build_chart(series_data, chart):
         "cpi": "#e5484d", "pcepi": "#3b82f6",
         "ffr": "#8b5cf6", "sofr": "#34d399",
     }
-    d = series_points(series_data.get(chart["series"][0], []))
+    # 多序列必须按日期对齐，不能拿首序列的 dates 当横轴、其余序列按数组下标贴值：
+    # 各序列起点差别很大（SOFR 2018-04 才有报价、10Y TIPS 2003 起、ZORI 2015 起），
+    # 按下标贴会把短序列的值整段挪到最早那截日期上（r-g 的 g 曾因此全落在 2003 年，
+    # SOFR 也只画在 2000-2005）。这里用日期并集做横轴，缺值填 null。
+    sds = [(sid, series_points(series_data.get(sid, []))) for sid in chart["series"]]
+    all_dates = sorted({dt for _, sd in sds for dt in sd["dates"]})
+    if len(all_dates) > MAX_POINTS:
+        all_dates = all_dates[-MAX_POINTS:]
     series_list = []
-    for sid in chart["series"]:
-        sd = series_points(series_data.get(sid, []))
+    for sid, sd in sds:
         color = multi_colors.get(sid, chart["color"]) if len(chart["series"]) > 1 else chart["color"]
-        series_list.append({"name": names.get(sid, sid), "values": sd["values"], "color": color})
-    return {"dates": d["dates"], "release_rule": rule, "series": series_list}
+        m = dict(zip(sd["dates"], sd["values"]))
+        item = {"name": names.get(sid, sid), "values": [m.get(dt) for dt in all_dates], "color": color}
+        # 点数比横轴少的序列（SOFR 没有周末、季频落在日频轴上）要允许跨空档连线，
+        # 否则每个周末都断一次，线会碎成虚线
+        if len(sd["dates"]) < len(all_dates):
+            item["connectNulls"] = True
+        series_list.append(item)
+    out = {"dates": all_dates, "release_rule": rule, "series": series_list}
+    # ---- 联邦基金 vs SOFR：两条隔夜利率几乎重合，光看水平线读不出准备金充裕度 ----
+    # 右轴补一条 SOFR − EFFR 利差（bp），利差走阔才是钱紧的信号；SOFR 2018-04 起才有，
+    # 默认从 2015 起（留出加息周期做对照），滑块可拖回 2000 看联邦基金的长期路径
+    if "sofr" in chart["series"]:
+        maps = {sid: dict(zip(sd["dates"], sd["values"])) for sid, sd in sds}
+        ffr_m, sofr_m = maps.get("ffr", {}), maps.get("sofr", {})
+        spread = []
+        for dt in all_dates:
+            a, b = sofr_m.get(dt), ffr_m.get(dt)
+            spread.append(round((a - b) * 100, 1) if a is not None and b is not None else None)
+        # 联邦基金用虚线：两条利率在 2022 年后几乎重合，实线会把 SOFR 整个盖住
+        if "ffr" in chart["series"]:
+            series_list[chart["series"].index("ffr")]["dashed"] = True
+        out.update({
+            "dual_axis": True, "day_format": True, "floor_zero": True,
+            # 默认 2015 起：SOFR 2018-04 才有报价，留两年联邦基金的加息路径做对照；
+            # 卡内可滚轮/拖拽回看到 2000（小卡不放滑块，省下的高度给绘图区）
+            "zoom_start": "2015-01-01",
+            # 0 轴参考线挂在右轴序列上（左轴是 %，0 会被画到图中底部）
+            "mark_line": 0, "mark_line_series": len(series_list),
+        })
+        out["series"].append({
+            "name": "SOFR−FFR 利差（bp）", "values": spread, "color": "#f5a623",
+            "yAxisIndex": 1, "unit": "bp", "connectNulls": True,
+        })
+    return out
 
 
 # 各页图表定义
@@ -1062,7 +1100,7 @@ THEME_CHARTS = {
         {"id": "fis_acm_attr", "title": "长端变动归因：期限溢价 vs 预期路径", "sub": "Δ10Y 拟合收益率 = Δ期限溢价 + Δ预期路径（ACM 恒等式，无残差）。切换窗口看最近这一波长端波动是供给 / 风险补偿在推，还是降息预期在回摆", "series": [], "color": "#e5484d", "wide": True},
     ],
     "monetary": [
-        {"id": "mon_ffr", "title": "联邦基金 vs SOFR", "sub": "政策利率走廊", "series": ["ffr", "sofr"], "color": "#8b5cf6"},
+        {"id": "mon_ffr", "title": "联邦基金 vs SOFR", "sub": "两条隔夜成交利率：水平几乎重合，右轴利差（bp）才反映准备金充裕度；SOFR 自 2018-04 起才有报价（图默认 2015 起，可缩放回看 2000 以来）", "series": ["ffr", "sofr"], "color": "#8b5cf6"},
         {"id": "mon_rrp", "title": "ON RRP 余额", "sub": "缩表终点信号", "series": ["on_rrp"], "color": "#34d399"},
         {"id": "mon_assets", "title": "美联储总资产", "sub": "资产负债表规模", "series": ["fed_assets"], "color": "#f5a623"},
     ],
@@ -1099,7 +1137,10 @@ THEME_TIPS = {
         ("期限溢价是残差，不是报价", "ACM 模型把 10Y 收益率拆成「风险中性预期短端路径 + 期限溢价」：前者是降息路径定价，后者是持有长久期的额外补偿。不同模型（ACM / Kim-Wright / DKW）水平可差 1-2 个百分点、方向高度一致；看趋势别看小数点。"),
     ],
     "monetary": [
-        ("SOFR 是事实政策利率", "联邦基金利率是目标，SOFR 才是事实成交利率。两者利差反映准备金充裕度。"),
+        ("EFFR 与 SOFR 是两条腿", "联邦基金有效利率（EFFR）是无担保隔夜成交利率（只在银行间、有准备金账户的机构之间），SOFR 是有国债抵押的隔夜回购利率（货币基金、对冲基金也能进）。平时两者贴合（±5bp），"
+         "利差走阔说明有人为拿到现金愿意付溢价：2019-09 与 2024 年末的尖峰都是回购市场钱紧的读数。"),
+        ("SOFR 起点只有 2018-04", "SOFR 由纽约联储 2018-04-03 起发布（此前市场用 LIBOR / 联邦基金），所以这条线天然比 EFFR 短；"
+         "看更长的隔夜利率历史只能看 EFFR。"),
         ("缩表终点信号", "ON RRP 余额归零 + 银行间开始拆借 = 缩表接近终点，SOFR 可能突破走廊上限。"),
         ("长期中性利率", "点阵图长期中性利率是否上移（当前约 3.1%），决定利率路径锚。"),
     ],
@@ -1160,7 +1201,7 @@ TOPIC_DETAIL_CHARTS = {
     "beveridge": [],  # 贝弗里奇用独立 Canvas 页，不走 ECharts
     "qt_end": [
         {"id": "td_rrp", "title": "ON RRP 余额", "sub": "缩表终点信号，归零提示钱荒", "series": ["on_rrp"], "color": "#34d399"},
-        {"id": "td_ffr", "title": "联邦基金 vs SOFR", "sub": "政策利率走廊，利差反映准备金充裕度", "series": ["ffr", "sofr"], "color": "#8b5cf6"},
+        {"id": "td_ffr", "title": "联邦基金 vs SOFR", "sub": "右轴利差（bp）反映准备金充裕度：走阔=钱紧，SOFR 冲破走廊上限提示缩表接近终点；SOFR 2018-04 起才有报价", "series": ["ffr", "sofr"], "color": "#8b5cf6"},
     ],
     "technical_recession": [
         {"id": "td_qoq", "title": "GDP 环比折年", "sub": "连续两季负增长 = 技术性衰退", "series": ["gdp_qoq"], "color": "#e5484d"},
