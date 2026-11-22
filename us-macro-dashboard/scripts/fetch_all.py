@@ -20,7 +20,8 @@ from indicators import (FRED_SERIES, FRED_META, BLS_SERIES, RELEASE_CALENDAR,
                         SCALED_INDICATORS, DIFFUSION_INDUSTRIES, SUPERCORE_WEIGHTS)
 from fetcher import (FredClient, BlsClient, BeaClient, CensusClient,
                      load_cache, save_cache, which_indicators_due,
-                     cache_path, fetch_zillow_zori, fetch_acm_term_premium)
+                     cache_path, fetch_zillow_zori, fetch_acm_term_premium,
+                     fetch_treasury_net_issuance)
 
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -408,6 +409,25 @@ def main():
                 all_series[k] = cached
         log(f"  ACM 抓取失败({e})，用缓存")
 
+    # 3.7 美债拍卖净发行（财政部 Fiscal Data 逐场明细 → 月度 bills / coupon）
+    # 财政页"美债供给"那张图的数据源：唯一能同时拿到公开市场发行额和到期日的地方，
+    # 所以能算净发行（毛发行与到期只差 4-5 倍，看不出供给压力）。全量与增量模式都抓。
+    try:
+        issue = fetch_treasury_net_issuance()
+        for k, v in issue.items():
+            all_series[k] = v
+            save_cache(k, v)
+        g, m = issue["tbills_gross"], issue["tbills_mat"]
+        cg, cm = issue["tcoupon_gross"], issue["tcoupon_mat"]
+        log(f"  美债拍卖净发行: {len(g)} 个月, 最新 {g[-1]['date'][:7]} "
+            f"bills 净 {g[-1]['value'] - m[-1]['value']:+.0f}bn / coupon 净 {cg[-1]['value'] - cm[-1]['value']:+.0f}bn")
+    except Exception as e:
+        for k in ("tbills_gross", "tbills_mat", "tcoupon_gross", "tcoupon_mat"):
+            cached = load_cache(k)
+            if cached:
+                all_series[k] = cached
+        log(f"  美债拍卖净发行抓取失败({e})，用缓存")
+
     # 3.5 超级核心通胀（supercore = 核心服务剔除住房）
     # 用 BLS 相对重要性加权求差：supercore = (W_S×核心服务 − W_H×住房)/(W_S−W_H)
     # 两个分项基期同为 1982-1984=100，故加权结果仍是同基期指数，可直接算同比/环比。
@@ -536,7 +556,8 @@ def main():
     latest = {}
     # 派生序列（仅供图表/专题使用，不作为独立指标卡展示）
     DERIVED_SERIES_SKIP = {"sahm_rule", "emp_diffusion", "goods_emp",
-                           "acm_tp10", "acm_rn10", "acm_y10"}
+                           "acm_tp10", "acm_rn10", "acm_y10",
+                           "tbills_gross", "tbills_mat", "tcoupon_gross", "tcoupon_mat"}
     for ind, series in all_series.items():
         if ind in DERIVED_SERIES_SKIP:
             continue

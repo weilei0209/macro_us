@@ -293,6 +293,107 @@ def fetch_acm_term_premium():
 
 
 # ---------------------------------------------------------------------------
+# 五之二、美债拍卖明细（财政部 Fiscal Data）→ 月度 bills / coupon 净发行
+# ---------------------------------------------------------------------------
+AUCTIONS_URL = ("https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
+                "/v1/accounting/od/auctions_query")
+AUCTION_FIELDS = ("cusip,security_type,security_term,offering_amt,reopening,"
+                  "issue_date,maturity_date,original_security_term")
+AUCTION_START = "1979-11"
+
+
+def _num(v):
+    """Fiscal Data 用字符串 "null" 表示缺失。"""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def fetch_treasury_auctions():
+    """全量拍卖明细（1979 至今约 1.1 万条，2 页）。
+
+    字段精简到 7 个，单页约 3MB；账单类（bills）周频拍卖占大头，但这是唯一能同时
+    拿到 offering_amt（公开市场发行额，不含 SOMA 增发）和 maturity_date（到期日）的源，
+    没有到期日就算不出净发行。
+    """
+    out, page = [], 1
+    while True:
+        q = urllib.parse.urlencode({
+            "fields": AUCTION_FIELDS,
+            "sort": "issue_date",
+            "page[size]": 10000,
+            "page[number]": page,
+        })
+        data = _http_json(f"{AUCTIONS_URL}?{q}", timeout=180)
+        rows = data.get("data") or []
+        out.extend(rows)
+        pages = int((data.get("meta") or {}).get("total-pages") or 1)
+        if page >= pages or not rows:
+            break
+        page += 1
+        time.sleep(0.5)
+    if len(out) < 5000:
+        raise RuntimeError(f"拍卖明细仅取到 {len(out)} 条，疑似接口异常")
+    return out
+
+
+def fetch_treasury_net_issuance(today=None):
+    """按月汇总 bills / coupon 的净发行（发行 − 到期），单位十亿美元。
+
+    口径要点：
+    - 金额取 offering_amt，即公开市场发行额；SOMA 增发（Fed 在拍卖里的 add-on）不在其中，
+      所以"剔除卖给 Fed 的部分"是数据天然带的，不需要再减。
+    - 到期侧按 CUSIP 汇总：一只券所有拍卖（原始发行 + 续发 reopen）的发行额加总才是它
+      到期要还的本金。这样续发既不会被当成多笔到期，也不会从净发行里漏掉。
+    - 只保留本月之前的月份：数据集滞后约 1 个月，当月往往只有到期、没有新发，
+      直接算会得到一个巨额负值。
+
+    返回 4 条月频序列（gross / 到期各两条），净发行在渲染层相减，便于 tooltip 展示明细。
+    """
+    rows = fetch_treasury_auctions()
+    today = today or datetime.date.today()
+    cur_month = today.strftime("%Y-%m")
+    today_s = today.isoformat()
+
+    principal, meta = {}, {}        # cusip -> 累计发行额 / (到期月, 0=bill 1=coupon)
+    gross, mat = {}, {}             # 月份 -> [bills, coupon]
+    for r in rows:
+        issue = (r.get("issue_date") or "")[:10]
+        if not issue or issue > today_s:
+            continue
+        amt = _num(r.get("offering_amt"))
+        cusip = r.get("cusip") or issue
+        cat = 0 if r.get("security_type") == "Bill" else 1
+        principal[cusip] = principal.get(cusip, 0.0) + amt
+        meta[cusip] = ((r.get("maturity_date") or "")[:7], cat)
+        g = gross.setdefault(issue[:7], [0.0, 0.0])
+        g[cat] += amt
+
+    for cusip, amt in principal.items():
+        mm, cat = meta.get(cusip, ("", 1))
+        if not mm:
+            continue
+        x = mat.setdefault(mm, [0.0, 0.0])
+        x[cat] += amt
+
+    months = sorted(m for m in set(list(gross) + list(mat))
+                    if AUCTION_START <= m < cur_month)
+    out = {"tbills_gross": [], "tbills_mat": [], "tcoupon_gross": [], "tcoupon_mat": []}
+    for m in months:
+        g = gross.get(m, [0.0, 0.0])
+        x = mat.get(m, [0.0, 0.0])
+        d = m + "-01"
+        out["tbills_gross"].append({"date": d, "value": round(g[0] / 1e9, 1)})
+        out["tbills_mat"].append({"date": d, "value": round(x[0] / 1e9, 1)})
+        out["tcoupon_gross"].append({"date": d, "value": round(g[1] / 1e9, 1)})
+        out["tcoupon_mat"].append({"date": d, "value": round(x[1] / 1e9, 1)})
+    if not out["tbills_gross"]:
+        raise RuntimeError("拍卖明细汇总为空")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # 六、发布日历判定
 # ---------------------------------------------------------------------------
 def _nth_weekday(year, month, weekday, nth):

@@ -81,6 +81,7 @@ bash serve.sh 9000     # 自定义端口
 | BEA | `BEA_API_KEY` | GDP/PCE/GDI 国民账户 |
 | Census | `CENSUS_API_KEY` | 零售/地产/贸易 |
 | 纽约联储 ACM | 无需 key | 期限溢价 / 风险中性预期路径 / 拟合 10Y（`ACMTermPremium.xls`，日频） |
+| 财政部 Fiscal Data | 无需 key | 逐场拍卖明细（`auctions_query`，1979 起）：月度 bills / coupon 净发行，金额取公开市场发行额（不含 SOMA 增发） |
 | Zillow | 无需 key | ZORI 新租约租金（公开 CSV，月频） |
 
 四个 API key 均从环境变量读取，无需硬编码。ACM 与 Zillow 走公开文件下载，

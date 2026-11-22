@@ -539,6 +539,42 @@ def acm_attribution(series_data):
             "windows": windows}
 
 
+def net_issuance_series(series_data, window=12, start="2005-01"):
+    """月度 bills / coupon 净发行（发行 − 到期，十亿美元）+ coupon 占净发行比重。
+
+    净发行 = 公开市场发行额 − 当月到期额，两者都不含 SOMA（Fed 拍卖 add-on）；
+    比重的分母用 window 个月滚动合计，避免单月总净发行接近 0 时比值爆炸
+    （2021 年 bills 收缩、coupon 扩张，滚动占比一度到 274%；2023 年反过来跌到 17%）。
+
+    起点截到 2005 年：拍卖明细虽然回溯到 1979，但 1979 年前发行的长债不在表内，
+    1990 年代前的到期额系统性偏低，净发行与占比都会失真（早期占比曾跑到 ±600%）。"""
+    keys = ("tbills_gross", "tbills_mat", "tcoupon_gross", "tcoupon_mat")
+    if not all(series_data.get(k) for k in keys):
+        return None
+    maps = {k: {p["date"]: p["value"] for p in series_data[k]} for k in keys}
+    dates = [p["date"] for p in series_data["tbills_gross"]]
+    bills = [round(maps["tbills_gross"].get(d, 0.0) - maps["tbills_mat"].get(d, 0.0), 1) for d in dates]
+    coupon = [round(maps["tcoupon_gross"].get(d, 0.0) - maps["tcoupon_mat"].get(d, 0.0), 1) for d in dates]
+    share = []
+    for i in range(len(dates)):
+        if i < window - 1:
+            share.append(None)
+            continue
+        b = sum(bills[i - window + 1:i + 1])
+        c = sum(coupon[i - window + 1:i + 1])
+        share.append(round(c / (b + c) * 100, 1) if abs(b + c) > 20 else None)
+    # 先算滚动值再截起点，避免最左边 11 个月空着
+    i0 = next((i for i, d in enumerate(dates) if d >= start + "-01"), 0)
+    # tooltip 明细：净额背后是"发行多少、到期多少"，不列出来读者没法核对
+    extra = {}
+    for i in range(i0, len(dates)):
+        d = dates[i]
+        extra[d] = (f"Bills：发行 {maps['tbills_gross'].get(d, 0):,.0f} / 到期 {maps['tbills_mat'].get(d, 0):,.0f}"
+                    f"　Coupon：发行 {maps['tcoupon_gross'].get(d, 0):,.0f} / 到期 {maps['tcoupon_mat'].get(d, 0):,.0f}（十亿美元）")
+    return {"dates": dates[i0:], "bills": bills[i0:], "coupon": coupon[i0:], "share": share[i0:],
+            "extra": extra}
+
+
 def goods_vs_payrolls_chart(series_data):
     """工业新增就业 vs 非农新增就业：双 Y 轴（左=非农新增，右=工业新增）。
     两个轴各自独立缩放，使均值视觉接近，突出周期波动的同步/领先关系。"""
@@ -590,6 +626,29 @@ def build_chart(series_data, chart):
             return {"dates": [], "series": []}
         d["release_rule"] = "三列取同一交易日 · 拟合 10Y = 期限溢价 + 风险中性预期路径"
         return d
+    # ---- 财政页：美债净发行（bills vs coupon）----
+    if cid == "fis_supply":
+        d = net_issuance_series(series_data)
+        if not d:
+            return {"dates": [], "series": []}
+        return {
+            "dates": d["dates"],
+            "release_rule": "月频 · 财政部 Fiscal Data 逐场拍卖明细 · 净发行 = 公开市场发行额 − 到期额"
+                            "（SOMA 增发不计入，续发按 CUSIP 归并后只在到期侧计一次）",
+            "dual_axis": True, "right_pct": True, "period": "month", "xfmt": "ym",
+            # 月频柱 20 年太密（一根柱不到 2px），默认从 2015 起；滑块可拖回 2005
+            "zoom_start": "2015-01-01", "show_slider": True,
+            "mark_line": 100, "mark_line_series": 2, "zero_line": True,
+            "tip_extra": d["extra"],
+            "series": [
+                {"name": "Bills 净发行", "values": d["bills"], "color": "#3b82f6",
+                 "type": "bar", "stack": "net", "unit": "$bn"},
+                {"name": "Coupon 净发行", "values": d["coupon"], "color": "#8b5cf6",
+                 "type": "bar", "stack": "net", "unit": "$bn"},
+                {"name": "Coupon 占比（12M 滚动）", "values": d["share"], "color": "#f5a623",
+                 "yAxisIndex": 1, "unit": "%", "digits": 0, "connectNulls": True},
+            ],
+        }
     # 非农新增 + 修订对比（实线最新值 + 虚线初值/1次修正）
     if cid == "emp_payrolls":
         return payrolls_revision_chart(series_data)
@@ -842,6 +901,7 @@ THEME_CHARTS = {
     "fiscal": [
         {"id": "fis_rg", "title": "r - g 化债空间", "sub": "实际利率 vs 实际增速", "series": ["tips10y", "gdp_qoq"], "color": "#3b82f6"},
         {"id": "fis_debt", "title": "10Y 美债收益率", "sub": "供给冲击 → 期限溢价", "series": ["us10y"], "color": "#e5484d"},
+        {"id": "fis_supply", "title": "美债净发行：bills vs coupon", "sub": "月度净发行 = 公开市场发行额 − 当月到期额，已剔除 SOMA 增发（Fed 在拍卖中的 add-on）；续发按 CUSIP 归并，不在发行侧重复计、只在到期侧计一次。柱为净发行（十亿美元，正=私人市场要吸收的新增供给），线为 coupon 占净发行的比重（12 个月滚动，右轴）：>100% 表示新增供给全部来自 coupon、bills 在收缩，<50% 说明靠 bills 撑量。久期供给的摆动在这条线上", "series": [], "color": "#3b82f6", "wide": True},
         {"id": "fis_acm_tp", "title": "ACM 10Y 期限溢价（日频）", "sub": "纽约联储 Adrian-Crump-Moench 模型：10Y 收益率 = 风险中性预期路径 + 期限溢价。负值 = 投资者为持有长债反而付出成本（QE 压价期）；供给放量、通胀不确定性抬升会推高溢价", "series": ["acm_tp10"], "color": "#e5484d", "wide": True},
         {"id": "fis_acm_attr", "title": "长端变动归因：期限溢价 vs 预期路径", "sub": "Δ10Y 拟合收益率 = Δ期限溢价 + Δ预期路径（ACM 恒等式，无残差）。切换窗口看最近这一波长端波动是供给 / 风险补偿在推，还是降息预期在回摆", "series": [], "color": "#e5484d", "wide": True},
     ],
@@ -879,6 +939,7 @@ THEME_TIPS = {
         ("债务率看路径", "债务可持续性看债务率路径是否收敛，而非绝对水平。"),
         ("三种化债路径", "增长化债（r<g）/ 通胀化债 / 违约重组。当前 r-g 缺口决定空间。"),
         ("美债供给 → 期限溢价", "净发行量上升 → 期限溢价抬升 → 长端收益率承压。"),
+        ("供给要看净发行", "每月到期量是发行量的 4-5 倍，毛发行看不出供给压力。净发行（公开市场发行 − 到期）剔除了滚动续发，再剔除 SOMA 增发，剩下的才是私人市场真正要吸收的久期。coupon 占比抬头 = 久期供给加码。"),
         ("期限溢价是残差，不是报价", "ACM 模型把 10Y 收益率拆成「风险中性预期短端路径 + 期限溢价」：前者是降息路径定价，后者是持有长久期的额外补偿。不同模型（ACM / Kim-Wright / DKW）水平可差 1-2 个百分点、方向高度一致；看趋势别看小数点。"),
     ],
     "monetary": [

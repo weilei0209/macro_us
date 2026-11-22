@@ -69,7 +69,7 @@
     return m ? (m[1] + ' Q' + Math.ceil(parseInt(m[2],10)/3)) : '';
   }
 
-  function tooltipFormatter(params, releaseRule, unit, dayFmt, period, seriesMeta){
+  function tooltipFormatter(params, releaseRule, unit, dayFmt, period, seriesMeta, tipExtra){
     if(!params || !params.length) return '';
     // 横轴周期判定：显式 period 优先。像工资图（AHE 月频 + ECI 季频）规则文案里
     // 同时出现"统计月"和"统计季度"，只按"统计季度"判断会把 2026-02 这类月份点
@@ -84,14 +84,28 @@
     params.forEach(function(p){
       if(p.seriesType === 'custom') return;   // 衰退区间标注不是数据序列，不进 tooltip
       if(p.value==null || p.value==='') return;   // 缺值不占一行（多频率共图时很常见）
-      var v;
-      if(unit === 'bp') v = fmtBp(p.value) + 'bp';   // 差值类图表带符号，便于分辨正负
-      else v = Number(p.value).toFixed(2);
       // 季频序列（如 ECI 落在月频横轴上）补注对应季度，避免把 7 月的季度值读成 7 月单月
       var meta = seriesMeta && seriesMeta[p.seriesIndex];
+      var v;
+      // 序列自带单位优先（一张卡里同时有十亿美元柱和百分比线时，全局 unit 不够用）
+      var su = meta && meta.unit;
+      if(su === '$bn'){
+        var n0 = Number(p.value);
+        var abs0 = Math.abs(n0);
+        var txt = abs0 >= 1000 ? Math.round(abs0).toLocaleString('en-US') : String(Math.round(abs0));
+        v = (n0 > 0 ? '+' : (n0 < 0 ? '−' : '')) + txt + ' bn';
+      }else if(su === '%'){
+        v = Number(p.value).toFixed(meta.digits == null ? 2 : meta.digits) + '%';
+      }else if(unit === 'bp') v = fmtBp(p.value) + 'bp';   // 差值类图表带符号，便于分辨正负
+      else v = Number(p.value).toFixed(2);
       var suffix = (meta && meta.freq === 'quarter') ? '（' + quarterLabel(params[0].axisValue) + '）' : '';
       s += p.marker + p.seriesName + suffix + '：' + v + '<br/>';
     });
+    // 附加明细（如净发行背后的"发行 X / 到期 Y"），让净额可追溯
+    var ex = tipExtra && tipExtra[params[0].axisValue];
+    if(ex){
+      s += '<div style="margin-top:3px;font-size:11px;opacity:0.85;">' + ex + '</div>';
+    }
     if(releaseRule){
       s += '<div style="margin-top:4px;font-size:11px;opacity:0.75;border-top:1px solid rgba(128,128,128,0.3);padding-top:3px;">' + releaseRule + '</div>';
     }
@@ -129,13 +143,29 @@
     right.position = 'right';
     right.splitLine = {show:false};
     right.axisLabel = Object.assign({}, tickLabel);
+    // 右轴是百分比口径（如净发行里的 coupon 占比）时补上 %，否则两条轴读数无从区分
+    if(data.right_pct) right.axisLabel.formatter = function(v){ return fmtTick(v) + '%'; };
     return [left, right];
   }
 
   // 构建折线图 option（支持 dataZoom 拖动缩放；big 模式显示 slider 且字号更大）
   // zoomStartIndex: 默认缩放起始的数据点索引（如 2022 年对应的索引），未提供则显示全部
   function buildLineOption(data, big, zoomStartIndex){
+    var hasBar = false;
     var series = data.series.map(function(s, i){
+      var yi = s.yAxisIndex === 1 ? 1 : 0;
+      // 柱状序列（净发行这类正负流量）：同 stack 的两根柱正负各自堆叠
+      if(s.type === 'bar'){
+        hasBar = true;
+        return {
+          name: s.name, type:'bar', data: s.values,
+          stack: s.stack || null,
+          barMaxWidth: big ? 22 : 15,
+          itemStyle:{color:s.color},
+          emphasis:{focus:'series'},
+          yAxisIndex: yi
+        };
+      }
       var dashed = !!s.dashed;
       return {
         name: s.name, type:'line', data: s.values,
@@ -150,7 +180,7 @@
         // 否则面积会从 0 轴一路铺到负值区，把走势压扁
         areaStyle: (i===0 && data.series.length===1 && data.no_area !== true) ? {color:s.color, opacity:0.15} : null,
         emphasis:{focus:'series'},
-        yAxisIndex: s.yAxisIndex === 1 ? 1 : 0
+        yAxisIndex: yi
       };
     });
     var fs = big ? 13 : 11;   // 字号
@@ -196,17 +226,20 @@
     var option = {
       backgroundColor:THEME.bg,
       // 带滑块的卡片需要多留底部空间，否则 x 轴标签会贴着滑块、滑块又紧贴画布下沿
-      grid:{left: big?64:48, right: data.dual_axis ? (big?72:56) : 34, top:28,
+      grid:{left: big?64:48, right: data.dual_axis ? (big?72:56) : 34, top: big?36:32,
             bottom: (big || data.show_slider === true) ? 66 : 44},
       tooltip:{trigger:'axis',
         backgroundColor:THEME.card, borderColor:THEME.line,
         textStyle:{color:THEME.text, fontSize:12},
-        formatter:function(params){ return tooltipFormatter(params, data.release_rule, data.unit, data.day_format === true, data.period, data.series); }
+        formatter:function(params){ return tooltipFormatter(params, data.release_rule, data.unit, data.day_format === true, data.period, data.series, data.tip_extra); }
       },
-      legend:{top:0, right:0, textStyle:{color:THEME.text2, fontSize:fs}, itemWidth:14, itemHeight:8},
-      xAxis:{type:'category', data:data.dates, boundaryGap:false,
+      // 双轴图的右轴刻度就画在图例正右侧，图例贴边会跟顶端刻度标签叠在一起
+      legend:{top:0, right: data.dual_axis ? 56 : 0, textStyle:{color:THEME.text2, fontSize:fs}, itemWidth:14, itemHeight:8},
+      xAxis:{type:'category', data:data.dates, boundaryGap:hasBar === true,
         axisLine:{lineStyle:{color:THEME.line}},
-        axisLabel:{color:THEME.text3, fontSize: big?11:10},
+        axisLabel:{color:THEME.text3, fontSize: big?11:10,
+          // 月频柱状图（净发行这类）标签只留到年月：262 个月的地毯图再带"-01"就成了一片数字
+          formatter: data.xfmt === 'ym' ? function(v){ return String(v).slice(0,7); } : null},
         axisTick:{show:false}
       },
       yAxis: buildYAxis(data, big),
@@ -223,10 +256,21 @@
     };
     option.series = series;
     // 可选参考线（如利差/差值的 0 轴）：data.mark_line = 0
+    // dual_axis 下参考线要挂在右轴序列上，否则会被当成左轴刻度（如 100 会画到 100 十亿美元）
     if(data.mark_line != null && series.length){
-      series[0].markLine = {
+      var mi = data.mark_line_series != null && series[data.mark_line_series] ? data.mark_line_series : 0;
+      series[mi].markLine = {
         silent: true, symbol: 'none', animation: false,
         data: [{yAxis: data.mark_line}],
+        lineStyle: {color: THEME.text3, type: 'dashed', width: 1, opacity: 0.9},
+        label: {show: false}
+      };
+    }
+    // 正负分向的堆叠柱需要一条 0 基线，否则分不清哪根柱是"收缩"
+    if(data.zero_line === true && series.length && !series[0].markLine){
+      series[0].markLine = {
+        silent: true, symbol: 'none', animation: false,
+        data: [{yAxis: 0}],
         lineStyle: {color: THEME.text3, type: 'dashed', width: 1, opacity: 0.9},
         label: {show: false}
       };
@@ -234,14 +278,21 @@
     return option;
   }
 
-  // 把 y 轴跨度切成一格"好看"的刻度步长（1/2/2.5/5 × 10^n），约 5 格
-  function niceStep(span){
-    if(!(span > 0)) return 1;
-    var raw = span / 5;
-    var mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
-    var norm = raw / mag;
-    var mult = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
-    return mult * mag;
+  // 把 y 轴量程贴到"整齐刻度"上：从 1/2/2.5/5 × 10^n 的阶梯里挑最细且刻度不超过 9 格的步长。
+  // 只按 span/5 取步长会把量程撑到 1.5 倍（数据 −586~585 会被画成 −1000~1000，上下各空 40%）。
+  function fitAxisRange(lo, hi){
+    var span = hi - lo;
+    if(!(span > 0)) span = Math.abs(hi) || 1;
+    var base = Math.pow(10, Math.floor(Math.log(span / 6) / Math.LN10));
+    var cands = [1, 2, 2.5, 5, 10, 20].map(function(m){ return m * base; });
+    for(var i = 0; i < cands.length; i++){
+      var st = cands[i];
+      var mn = Math.floor(lo / st) * st;
+      var mx = Math.ceil(hi / st) * st;
+      if((mx - mn) / st <= 9) return { min: mn, max: mx };
+    }
+    var st2 = cands[cands.length - 1];
+    return { min: Math.floor(lo / st2) * st2, max: Math.ceil(hi / st2) * st2 };
   }
 
   // 根据 dataZoom 当前可见区间，动态重设 Y 轴范围（随 X 轴缩放自动适配）
@@ -261,34 +312,45 @@
     if(i0 < 0) i0 = 0;
     if(i1 <= i0) i1 = i0 + 1;
 
-    function rangeFor(axisIndex){
+    function rangeFor(axisIndex, floorZero){
       var lo = Infinity, hi = -Infinity;
+      // 堆叠柱要按索引把同 stack 的正/负分量分别累加，否则轴只按单根柱子拟合、柱子会顶出画布
+      var posSum = {}, negSum = {};
       data.series.forEach(function(s){
         if((s.yAxisIndex === 1 ? 1 : 0) !== axisIndex) return;
+        var stacked = (s.type === 'bar' && s.stack);
         for(var i=i0;i<i1;i++){
           var v = s.values[i];
           if(v==null || v==='' || isNaN(v)) continue;
-          if(v < lo) lo = v;
-          if(v > hi) hi = v;
+          if(stacked){
+            if(v >= 0) posSum[i] = (posSum[i] || 0) + v;
+            else negSum[i] = (negSum[i] || 0) + v;
+          }else{
+            if(v < lo) lo = v;
+            if(v > hi) hi = v;
+          }
         }
       });
+      Object.keys(posSum).forEach(function(k){ if(posSum[k] > hi) hi = posSum[k]; });
+      Object.keys(negSum).forEach(function(k){ if(negSum[k] < lo) lo = negSum[k]; });
       if(lo === Infinity || hi === -Infinity) return null;
       var pad = (hi - lo) * 0.08;
       if(pad === 0) pad = Math.abs(hi) * 0.05 || 1;
       // 上下限对齐到"整洁刻度"，避免用 10378.0043 这种原值当轴端点：
       // 一是端点标签过长会被裁切，二是刻度值本身不好读
       var span = (hi + pad) - (lo - pad);
-      var step = niceStep(span);
-      var ymin = Math.floor((lo - pad) / step) * step;
-      var ymax = Math.ceil((hi + pad) / step) * step;
+      var fit = fitAxisRange(lo - pad, hi + pad);
+      var ymin = fit.min, ymax = fit.max;
+      // 百分比轴从 0 起：全正时不留负刻度（占比不可能为负）
+      if(floorZero && lo >= 0 && ymin < 0) ymin = 0;
       ymin = Math.round(ymin * 1000) / 1000;
       ymax = Math.round(ymax * 1000) / 1000;
-      if(!(ymax > ymin)){ ymax = ymin + step; }
+      if(!(ymax > ymin)){ ymax = ymin + span; }
       return { min: ymin, max: ymax };
     }
 
     if(data.dual_axis){
-      var left = rangeFor(0), right = rangeFor(1);
+      var left = rangeFor(0), right = rangeFor(1, data.right_pct === true);
       var axes = [{}, {}];
       if(left){ axes[0] = { min: left.min, max: left.max }; }
       if(right){ axes[1] = { min: right.min, max: right.max }; }
