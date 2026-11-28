@@ -56,8 +56,8 @@ python3 scripts/update.py --full   # 全量更新
 ### 本机启动服务
 
 ```bash
-bash serve.sh          # 默认 8080 端口，访问 http://127.0.0.1:8080
-bash serve.sh 9000     # 自定义端口
+bash serve.sh          # 默认 43187 端口，访问 http://127.0.0.1:43187
+bash serve.sh 9000     # 自定义端口（高位端口，避开 8080 等常用端口）
 ```
 
 ### 定时更新
@@ -69,7 +69,7 @@ bash serve.sh 9000     # 自定义端口
 1. 准备一个托管在 Cloudflare 的域名。
 2. 安装 `cloudflared`。
 3. 建隧道并生成 CNAME：`cloudflared tunnel login` → `cloudflared tunnel create macro` → 在域名 DNS 加 CNAME 指向 `<tunnel-id>.cfargotunnel.com`。
-4. 常驻运行：`cloudflared tunnel run macro`，配置 ingress 指向 `http://127.0.0.1:8080`。
+4. 常驻运行：`cloudflared tunnel run macro`，配置 ingress 指向 `http://127.0.0.1:43187`。
 5. 外网即可通过你的域名（自动 HTTPS）访问本机服务。
 
 ## 数据源
