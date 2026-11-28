@@ -27,10 +27,19 @@ FRED_SERIES = {
     "vix":          "VIXCLS",      # VIX
     "dxy":          "DTWEXBGS",    # 广义美元指数
     # ---- 美联储资产负债表 / 流动性（周频/日频）----
-    "fed_assets":   "WALCL",       # 美联储总资产（周）
-    "on_rrp":       "RRPONTSYD",   # 隔夜逆回购余额（日）
-    "reserves":     "WRESBAL",     # 准备金余额（周）
+    "fed_assets":   "WALCL",       # 美联储总资产（周，周三水平）
+    "on_rrp":       "RRPONTSYD",   # 隔夜逆回购余额（日，纽约联储操作量）
+    "reserves":     "WRESBAL",     # 准备金余额（周平均）
     "bank_loans":   "TOTLL",       # 银行信贷贷款（周）
+    # ---- H.4.1 资产负债表分项（全部"周三水平"，与 WALCL 同口径，可直接相加校验恒等式）----
+    "fed_treas":    "TREAST",      # 资产：持有国债（全部期限）
+    "fed_bills":    "WSHOBL",      # 资产：其中短期国债 Bills
+    "fed_loans":    "WLCFLL",      # 资产：贷款合计（贴现窗口 + 各类信贷工具）
+    "fed_swaps":    "SWPT",        # 资产：央行流动性掉期（危机期向外国央行供给美元）
+    "fed_cash":     "WCICL",       # 负债：流通中现金
+    "fed_resbal":   "WRBWFRBL",    # 负债：准备金余额（周三水平；WRESBAL 是周平均，不能混用）
+    "fed_rrp_bs":   "WLRRAL",      # 负债：逆回购（ON RRP + 外国官方）
+    "fed_tga":      "WDTGAL",      # 负债：财政部一般账户 TGA
     # ---- 就业（月频）----
     "payrolls":     "PAYEMS",      # 非农就业总人数（存量，用于算新增）
     "unrate":       "UNRATE",      # 失业率 U3
@@ -110,6 +119,14 @@ FRED_META = {
     "fed_assets": ("美联储总资产", "货币"),
     "on_rrp":     ("隔夜逆回购余额", "货币"),
     "reserves":   ("准备金余额", "货币"),
+    "fed_treas":  ("持有国债", "货币"),
+    "fed_bills":  ("持有短期国债", "货币"),
+    "fed_loans":  ("美联储贷款", "货币"),
+    "fed_swaps":  ("央行流动性掉期", "货币"),
+    "fed_cash":   ("流通中现金", "货币"),
+    "fed_resbal": ("准备金（周三）", "货币"),
+    "fed_rrp_bs": ("逆回购负债", "货币"),
+    "fed_tga":    ("财政部一般账户", "货币"),
     "bank_loans": ("商业银行贷款", "金融条件"),
     "payrolls":   ("非农就业总人数", "就业"),
     "unrate":     ("失业率 U3", "就业"),
@@ -230,6 +247,15 @@ RELEASE_CALENDAR = {
     "fed_assets":   ("FRED", "weekly_fri"),
     "reserves":     ("FRED", "weekly_fri"),
     "bank_loans":   ("FRED", "weekly_fri"),
+    # H.4.1 周四 16:30 发布（数据截至周三），同一批抓
+    "fed_treas":    ("FRED", "weekly_fri"),
+    "fed_bills":    ("FRED", "weekly_fri"),
+    "fed_loans":    ("FRED", "weekly_fri"),
+    "fed_swaps":    ("FRED", "weekly_fri"),
+    "fed_cash":     ("FRED", "weekly_fri"),
+    "fed_resbal":   ("FRED", "weekly_fri"),
+    "fed_rrp_bs":   ("FRED", "weekly_fri"),
+    "fed_tga":      ("FRED", "weekly_fri"),
     "mortgage30":   ("FRED", "weekly"),
     # ---- 月频就业（首周周五非农，月中 JOLTS 略滞后）----
     "payrolls":     ("FRED", "monthly_1st_fri"),
@@ -361,6 +387,15 @@ INDICATOR_META = {
     "on_rrp":       {"source": "纽约联储",     "unit": "十亿美元", "scale": 1},
     "reserves":     {"source": "美联储",       "unit": "十亿美元", "scale": 0.001},  # 原始：百万美元
     "bank_loans":   {"source": "美联储",       "unit": "十亿美元", "scale": 1},
+    # H.4.1 分项：FRED 原始单位为百万美元，统一缩到十亿美元（图上再折万亿）
+    "fed_treas":    {"source": "美联储（H.4.1）", "unit": "十亿美元", "scale": 0.001},
+    "fed_bills":    {"source": "美联储（H.4.1）", "unit": "十亿美元", "scale": 0.001},
+    "fed_loans":    {"source": "美联储（H.4.1）", "unit": "十亿美元", "scale": 0.001},
+    "fed_swaps":    {"source": "美联储（H.4.1）", "unit": "十亿美元", "scale": 0.001},
+    "fed_cash":     {"source": "美联储（H.4.1）", "unit": "十亿美元", "scale": 0.001},
+    "fed_resbal":   {"source": "美联储（H.4.1）", "unit": "十亿美元", "scale": 0.001},
+    "fed_rrp_bs":   {"source": "美联储（H.4.1）", "unit": "十亿美元", "scale": 0.001},
+    "fed_tga":      {"source": "美联储（H.4.1）", "unit": "十亿美元", "scale": 0.001},
     # ---- 就业 ----
     "payrolls":     {"source": "BLS 劳工统计局", "unit": "千人", "scale": 1},
     "unrate":       {"source": "BLS 劳工统计局", "unit": "%", "scale": 1},

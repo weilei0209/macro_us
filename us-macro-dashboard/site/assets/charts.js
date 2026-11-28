@@ -114,6 +114,7 @@
         var n1 = Number(p.value);
         v = (n1 > 0 ? '+' : (n1 < 0 ? '−' : '')) + Math.abs(n1).toFixed(meta.digits == null ? 0 : meta.digits) + 'bp';
       }else if(unit === 'bp') v = fmtBp(p.value) + 'bp';   // 差值类图表带符号，便于分辨正负
+      else if(unit === '$tn') v = (Number(p.value)/1000).toFixed(2) + ' 万亿';   // 数据存十亿美元，折万亿显示
       else v = Number(p.value).toFixed(2);
       var suffix = '';
       if(meta && meta.freq === 'quarter'){
@@ -123,6 +124,14 @@
       }
       s += p.marker + p.seriesName + suffix + '：' + v + '<br/>';
     });
+    // 堆叠面积（资产端/负债端分块）：补一行合计，峰值与归零点不用心算各层之和
+    if(seriesMeta && seriesMeta.length && seriesMeta[0] && seriesMeta[0].stack){
+      var tot = 0, hasV = false;
+      params.forEach(function(p){
+        if(p.value != null && p.value !== '' && !isNaN(p.value)){ tot += Number(p.value); hasV = true; }
+      });
+      if(hasV) s += '<div style="margin-top:2px;font-weight:600;">合计：' + (tot/1000).toFixed(2) + ' 万亿</div>';
+    }
     // 附加明细（如净发行背后的"发行 X / 到期 Y"），让净额可追溯
     var ex = tipExtra && tipExtra[params[0].axisValue];
     if(ex){
@@ -148,6 +157,9 @@
   function buildYAxis(data, big){
     var dual = data.dual_axis === true;
     var tickLabel = {color:THEME.text3, fontSize: big?11:10, formatter:fmtTick};
+    // 万亿美元口径：数据本身是十亿美元，刻度折成万亿（画 6.7 而不是 6,732）
+    if(data.unit === '$tn') tickLabel = {color:THEME.text3, fontSize: big?11:10,
+      formatter:function(v){ return (v/1000).toFixed(1); }};
     var base = {
       type:'value',
       axisLine:{show:false}, axisTick:{show:false},
@@ -189,24 +201,30 @@
         };
       }
       var dashed = !!s.dashed;
+      var stk = s.stack || null;
       return {
         name: s.name, type:'line', data: s.values,
-        smooth: dashed ? false : true,
+        // 堆叠面积（资产负债表这种"分块加总"）：同一 stack 的层叠起来
+        stack: stk,
+        smooth: stk ? 0.2 : (dashed ? false : true),
         showSymbol: s.showSymbol === true,
         symbol: s.showSymbol === true ? 'circle' : 'none',
         symbolSize: big ? 7 : 5,
         connectNulls: s.connectNulls === true,
         // step:'end' 用于把季频值铺到日频横轴（g 的阶梯线）：值保持到下一季发布时才跳变
         step: s.step || false,
-        lineStyle:{width: big?2.5:2, color:s.color, type: dashed ? 'dashed' : 'solid'},
+        lineStyle: stk ? {width:0.8, color:s.color, opacity:0.9}
+                       : {width: big?2.5:2, color:s.color, type: dashed ? 'dashed' : 'solid'},
         itemStyle:{color:s.color},
         // 单序列默认加淡色面积；零值上下反复穿越的序列（如期限溢价）用 no_area 关掉，
         // 否则面积会从 0 轴一路铺到负值区，把走势压扁。
         // 序列级 s.area 用于双轴图里想强调"风险量"的那条（如衰退概率）
-        areaStyle: (s.area === true)
-          ? {color:s.color, opacity:0.12}
-          : ((i===0 && data.series.length===1 && data.no_area !== true) ? {color:s.color, opacity:0.15} : null),
-        emphasis:{focus:'series'},
+        areaStyle: stk ? {color:s.color, opacity:0.95}
+          : ((s.area === true)
+              ? {color:s.color, opacity:0.12}
+              : ((i===0 && data.series.length===1 && data.no_area !== true) ? {color:s.color, opacity:0.15} : null)),
+        // 堆叠面积不能开 focus:'series'：悬停会淡化其他层，整张图看着像只剩一层数据
+        emphasis:{focus: stk ? 'none' : 'series'},
         yAxisIndex: yi
       };
     });
@@ -253,7 +271,9 @@
     var option = {
       backgroundColor:THEME.bg,
       // 带滑块的卡片需要多留底部空间，否则 x 轴标签会贴着滑块、滑块又紧贴画布下沿
-      grid:{left: big?64:48, right: data.dual_axis ? (big?72:56) : 34, top: big?36:32,
+      // 堆叠面积有 4~5 层图例，小卡里会折成两行：把绘图区往下让 16px，否则顶层色块贴住图例
+      grid:{left: big?64:48, right: data.dual_axis ? (big?72:56) : 34,
+            top: (big?36:32) + (data.series.length >= 4 ? 16 : 0),
             bottom: (big || data.show_slider === true) ? 66 : 44},
       tooltip:{trigger:'axis',
         backgroundColor:THEME.card, borderColor:THEME.line,
@@ -261,12 +281,29 @@
         formatter:function(params){ return tooltipFormatter(params, data.release_rule, data.unit, data.day_format === true, data.period, data.series, data.tip_extra); }
       },
       // 双轴图的右轴刻度就画在图例正右侧，图例贴边会跟顶端刻度标签叠在一起
-      legend:{top:0, right: data.dual_axis ? 56 : 0, textStyle:{color:THEME.text2, fontSize:fs}, itemWidth:14, itemHeight:8},
+      legend:{top:0, right: data.dual_axis ? 56 : 0,
+        textStyle:{color:THEME.text2, fontSize: data.series.length >= 4 ? 10 : fs},
+        itemWidth: data.series.length >= 4 ? 11 : 14,
+        itemHeight: data.series.length >= 4 ? 7 : 8,
+        itemGap: data.series.length >= 4 ? 8 : 10},
       xAxis:{type:'category', data:data.dates, boundaryGap:hasBar === true,
         axisLine:{lineStyle:{color:THEME.line}},
         axisLabel:{color:THEME.text3, fontSize: big?11:10,
-          // 月频柱状图（净发行这类）标签只留到年月：262 个月的地毯图再带"-01"就成了一片数字
-          formatter: data.xfmt === 'ym' ? function(v){ return String(v).slice(0,7); } : null},
+          // 'ym' 给月频柱（净发行这类）只留年月：262 个月的地毯图再带"-01"就成了一片数字。
+          // 'year' 给周频/长历史的堆叠面积只留年份：全部标签先参与布局、再由 hideOverlap 隐掉
+          // 挤在一起的，得到均匀的年份刻度（默认按点抽稀会跳年，出现 2011/2012/2013 连标）
+          // 周频图按"年份变化"打点，且只标偶数年（24 年 × 4 字在 570px 的小卡里放不下）
+          interval: data.xfmt === 'year' ? (function(dates){
+            return function(idx){
+              if(idx === 0) return true;
+              var y = String(dates[idx]).slice(0,4), py = String(dates[idx-1]).slice(0,4);
+              if(y === py) return false;
+              return parseInt(y, 10) % 2 === 0;
+            };
+          })(data.dates) : 'auto',
+          hideOverlap: data.xfmt === 'year',
+          formatter: data.xfmt === 'ym' ? function(v){ return String(v).slice(0,7); }
+                   : (data.xfmt === 'year' ? function(v){ return String(v).slice(0,4); } : null)},
         axisTick:{show:false}
       },
       yAxis: buildYAxis(data, big),
@@ -345,7 +382,7 @@
       var posSum = {}, negSum = {};
       data.series.forEach(function(s){
         if((s.yAxisIndex === 1 ? 1 : 0) !== axisIndex) return;
-        var stacked = (s.type === 'bar' && s.stack);
+        var stacked = !!s.stack;   // 堆叠柱与堆叠面积都按索引累加，否则轴按单层拟合、顶层会顶出画布
         for(var i=i0;i<i1;i++){
           var v = s.values[i];
           if(v==null || v==='' || isNaN(v)) continue;
@@ -385,6 +422,9 @@
       return;
     }
     var r = rangeFor(0, data.floor_zero === true);
+    // 堆叠面积必须从 0 起，各层高度才能直接读成金额。个别周残差为负（2024 年起美联储资本为负）
+    // 会把轴撑到 −2，这里钉在 0：负层裁到轴外，正层之和仍等于总资产（误差 <1%），tooltip 照实显示。
+    if(r && data.y_from_zero === true && r.min < 0) r.min = 0;
     if(r) chart.setOption({ yAxis:{ min: r.min, max: r.max } });
   }
 
@@ -709,8 +749,9 @@
       var box = document.getElementById('modal-chart');
       if(modalChart){ try{ modalChart.dispose(); }catch(e){} }
       modalChart = echarts.init(box, null, {renderer:'canvas'});
-      // 默认从 2022 年开始展示（避开疫情期异常值），Y 轴随缩放自动适配
-      var si = dateToIndex(data.dates, '2022-01-01');
+      // 放大视图的起始范围：有 zoom_start 就跟随（资产负债表要从 2008 看起，
+      // 硬编码 2022 会把 QE 三段全切掉），否则退到 2022（避开疫情期异常值）
+      var si = dateToIndex(data.dates, data.zoom_start || '2022-01-01');
       modalChart.setOption(buildLineOption(data, true, si));
       modalChart.on('datazoom', function(){ fitYAxis(modalChart, data); });
       // 初始化后立即按 2022 起的可见区间拟合一次 Y 轴

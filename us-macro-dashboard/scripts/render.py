@@ -706,6 +706,58 @@ def goods_vs_payrolls_chart(series_data):
     }
 
 
+# ---------------------------------------------------------------------------
+# 美联储资产负债表：资产端 / 负债端的堆叠面积（H.4.1 逐科目）
+# ---------------------------------------------------------------------------
+# 同一堆钱的两个视角：左边是"钱变成了什么"（买了哪些证券、放出哪些贷款），
+# 右边是"钱最终停在谁的账上"（现金 / 准备金 / 逆回购 / 财政部账户）。
+# 两边各自加总恒等于总资产，所以同一周两张图等高——换一个角度看同一张表。
+# 全部科目取 H.4.1 的"周三水平"，与总资产 WALCL 同口径；现有 reserves(WRESBAL) 是
+# 周平均，混进来会在残差里留下几百亿的口径差，所以负债端准备金单抓 WRBWFRBL。
+def fed_balance_sheet(series_data):
+    def m(key):
+        p = series_points(series_data.get(key, []))
+        return dict(zip(p["dates"], p["values"]))
+
+    walcl = m("fed_assets")
+    if not walcl:
+        return None
+    treas, bills = m("fed_treas"), m("fed_bills")
+    loans, swaps = m("fed_loans"), m("fed_swaps")
+    cash, rbal = m("fed_cash"), m("fed_resbal")
+    rrp, tga = m("fed_rrp_bs"), m("fed_tga")
+
+    dates = sorted(walcl)
+
+    def g(mp, d):
+        v = mp.get(d)
+        return 0.0 if v is None else v
+
+    asset = {"mid": [], "bills": [], "other": [], "facility": []}
+    liab = {"cash": [], "resbal": [], "rrp": [], "tga": [], "other": []}
+    for d in dates:
+        w = walcl[d]
+        t, b = g(treas, d), g(bills, d)
+        fac = g(loans, d) + g(swaps, d)
+        asset["mid"].append(round(t - b, 2))
+        asset["bills"].append(round(b, 2))
+        # 残差 = 总资产 − 国债 − 贷款掉期：含 MBS、黄金外汇、应急工具 LLC 资产等
+        asset["other"].append(round(w - t - fac, 2))
+        asset["facility"].append(round(fac, 2))
+
+        c, r = g(cash, d), g(rbal, d)
+        v, tg = g(rrp, d), g(tga, d)
+        liab["cash"].append(round(c, 2))
+        liab["resbal"].append(round(r, 2))
+        liab["rrp"].append(round(v, 2))
+        liab["tga"].append(round(tg, 2))
+        # 残差含"跨区合并抵消"（eliminations from consolidation），2024 年起该抵消项变大，
+        # 有 68 周把这项算成负的（最小 −530 亿）。负层在堆叠面积里会把基线拉下去、画出竖缝，
+        # 故按 0 截断（误差 <0.8%，准备金等主体读数不受影响），真实值在 tooltip 里仍可能显示为负。
+        liab["other"].append(max(0.0, round(w - c - r - v - tg, 2)))
+    return {"dates": dates, "asset": asset, "liab": liab}
+
+
 def build_chart(series_data, chart):
     cid = chart["id"]
     rule = freq_rule_for_chart(chart)
@@ -751,6 +803,37 @@ def build_chart(series_data, chart):
                  "unit": "%", "digits": 1, "yAxisIndex": 1, "area": True,
                  "freq": "month", "month_lag": 1},
             ],
+        }
+    # ---- 货币页：美联储资产负债表两端（堆叠面积，替代原来的一条总资产曲线）----
+    if cid in ("mon_fed_asset", "mon_fed_liab"):
+        d = fed_balance_sheet(series_data)
+        if not d or not d["dates"]:
+            return {"dates": [], "series": []}
+        if cid == "mon_fed_asset":
+            side = "asset"
+            legs = [("中长期国债", "mid", "#2a5c8a"),
+                    ("短期国债（bills）", "bills", "#4f93c9"),
+                    ("MBS 及其他（残差）", "other", "#c9972f"),
+                    ("贷款与流动性工具", "facility", "#c0392b")]
+            rule = ("周频（周三水平，H.4.1 周四发布）· 四项加总 = 总资产 · "
+                    "MBS 及其他为残差口径（含 MBS、黄金外汇、应急工具 LLC 资产）")
+        else:
+            side = "liab"
+            legs = [("流通中现金", "cash", "#8d99a6"),
+                    ("准备金（银行体系）", "resbal", "#2a5c8a"),
+                    ("逆回购（ON RRP + 外国官方）", "rrp", "#2e9e6b"),
+                    ("财政部账户 TGA", "tga", "#d9a62e"),
+                    ("其他与资本金", "other", "#b8cfe0")]
+            rule = ("周频（周三水平）· 五项加总 = 总资产 · 准备金取周三水平 WRBWFRBL"
+                    "（WRESBAL 是周平均）；其他与资本金为残差口径，含跨区合并抵消，负值按 0 处理")
+        return {
+            "dates": d["dates"],
+            "release_rule": rule,
+            "unit": "$tn", "xfmt": "year", "day_format": True,
+            # 2002 起就有数据，但 2008 前整条表躺在 0.7-0.9 万亿，会把 QE 段压成一条缝
+            "zoom_start": "2008-01-01", "y_from_zero": True,
+            "series": [{"name": nm, "values": d[side][k], "color": col, "stack": "bs"}
+                       for nm, k, col in legs],
         }
     # SEP 点阵图（货币页）
     if cid == "mon_sep_dots":
@@ -1055,6 +1138,12 @@ def build_chart(series_data, chart):
             "name": "SOFR−FFR 利差（bp）", "values": spread, "color": "#f5a623",
             "yAxisIndex": 1, "unit": "bp", "connectNulls": True,
         })
+    # 图表定义里可以带通用绘制选项：单序列图常需要关掉 8% padding 撑出的负刻度
+    # （ON RRP 这种从 0 起的量，轴上出现 −500 会让人以为余额为负）
+    for key in ("floor_zero", "y_from_zero", "zoom_start", "no_area", "show_slider",
+                "xfmt", "day_format", "unit"):
+        if key in chart:
+            out[key] = chart[key]
     return out
 
 
@@ -1111,8 +1200,18 @@ THEME_CHARTS = {
     ],
     "monetary": [
         {"id": "mon_ffr", "title": "联邦基金 vs SOFR", "sub": "两条隔夜成交利率：水平几乎重合，右轴利差（bp）才反映准备金充裕度；SOFR 自 2018-04 起才有报价（图默认 2015 起，可缩放回看 2000 以来）", "series": ["ffr", "sofr"], "color": "#8b5cf6"},
-        {"id": "mon_rrp", "title": "ON RRP 余额", "sub": "缩表终点信号", "series": ["on_rrp"], "color": "#34d399"},
-        {"id": "mon_assets", "title": "美联储总资产", "sub": "资产负债表规模", "series": ["fed_assets"], "color": "#f5a623"},
+        {"id": "mon_rrp", "title": "ON RRP 余额（日频）",
+         "sub": "货币基金停放在美联储的隔夜资金。2022-2023 峰值 2.4 万亿，是缩表时吸收准备金的缓冲垫；"
+                "归零后准备金开始直接承压，是缩表接近终点的信号。日频操作量，与负债端图里的逆回购（周三存量、含外国官方）口径不同",
+         "series": ["on_rrp"], "color": "#34d399", "floor_zero": True},
+        {"id": "mon_fed_asset", "title": "美联储资产端：买什么、买多久",
+         "sub": "自下而上：中长期国债 → 短期国债（bills）→ MBS 及其他（残差）→ 贷款与流动性工具。"
+                "国债与 MBS 的持有量就是从市场吸走的久期；红色那块平时贴近零，放大即危机信号（2008 掉期 + TAF、2020 PDCF/MMLF、2023 BTFP）",
+         "series": [], "color": "#2a5c8a"},
+        {"id": "mon_fed_liab", "title": "美联储负债端：钱最终停在谁的账上",
+         "sub": "自下而上：流通中现金 → 准备金 → 逆回购 → 财政部账户 TGA → 其他与资本金。"
+                "总量由 QE/QT 决定；现金随名义经济稳定增长，其余三块此消彼长：TGA 上升抽走准备金，ON RRP 下降把流动性还给准备金",
+         "series": [], "color": "#2e9e6b"},
     ],
     "leading": [
         {"id": "lea_curve", "title": "收益率曲线：10Y vs 2Y", "sub": "期限利差，倒挂预示衰退", "series": ["us10y", "us2y"], "color": "#8b5cf6"},
@@ -1152,7 +1251,10 @@ THEME_TIPS = {
         ("SOFR 起点只有 2018-04", "SOFR 由纽约联储 2018-04-03 起发布（此前市场用 LIBOR / 联邦基金），所以这条线天然比 EFFR 短；"
          "看更长的隔夜利率历史只能看 EFFR。"),
         ("缩表终点信号", "ON RRP 余额归零 + 银行间开始拆借 = 缩表接近终点，SOFR 可能突破走廊上限。"),
-        ("长期中性利率", "点阵图长期中性利率是否上移（当前约 3.1%），决定利率路径锚。"),
+        ("长期中性利率", "点阵图长期中性利率是否上移（2026-09 SEP 中位数 3.2%，6 月为 3.1%），决定利率路径锚。"),
+        ("同一堆钱的两个视角", "资产端回答「钱变成了什么」（买了哪些证券、放出哪些贷款），负债端回答「钱停在谁的账上」"
+         "（现金 / 准备金 / 逆回购 / TGA）。两端各自加总恒等于总资产，所以两张图同高：QE 期资产端买证券，"
+         "负债端对应的是准备金与逆回购膨胀；QT 期反过来。谁在吸收这堆钱，决定了货币市场松不松。"),
     ],
     "leading": [
         ("ISM 制造业 PMI", "全球大类资产的共同因子，月初发布，领先经济拐点。"),
@@ -1447,6 +1549,8 @@ def chart_meta(chart):
         "emp_prime": "来源 BLS（CPS） · 单位 % · 黄金年龄 25-54 岁劳动参与率，剔年龄结构噪音",
         "emp_wages": "来源 BLS（经 FRED）· 单位 %（同比）· AHE 月频（构成偏差）vs ECI 季频（固定权重、美联储首选）；ECI 为季度值，点落在季首月，悬停时会标注所属季度",
         "mon_sep_dots": "来源 美联储 FOMC（SEP Figure 3.E）· 单位 % · 点画在 0.25pp 档位的中点（如 4.13-4.37 记为 4.25）；悬停可看该档人数与上一期同档人数；点越靠上越鹰，整列的点位相对灰虚线的高度就是参与者认为今年还要加息还是降息",
+        "mon_fed_asset": "来源 美联储 H.4.1（经 FRED）· 单位 万亿美元 · 四段 = 持有国债（TREAST）拆出 bills（WSHOBL）后的中长期部分 / bills / 残差 / 贷款（WLCFLL）+ 央行流动性掉期（SWPT）。残差 = 总资产 − 国债 − 贷款 − 掉期，含 MBS、黄金外汇、应急工具 LLC 资产等。全部取周三水平，四段加总 = 总资产",
+        "mon_fed_liab": "来源 美联储 H.4.1（经 FRED）· 单位 万亿美元 · 五段 = 流通中现金（WCICL）/ 准备金（WRBWFRBL）/ 逆回购（WLRRAL，含 ON RRP 与外国官方）/ 财政部一般账户（WDTGAL）/ 其他与资本金（残差，含跨区合并抵消，负值按 0 处理）。全部取周三水平，五段加总 ≈ 总资产",
     }
     cid = chart["id"]
     if cid in derived_note:
